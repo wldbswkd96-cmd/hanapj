@@ -1,0 +1,1060 @@
+<title>WLF 자동 스크리닝</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&family=Noto+Serif+KR:wght@400;600;700&display=swap">
+<style>
+/* Layout: operations console. Top bar + KPI strip, then a three-pane workbench:
+   inbox (portal 수신함) | 품의서 원문 (paper, serif) | 추출·WLF 판정 panel. */
+:root {
+  --bg: #eef1f4;
+  --surface: #ffffff;
+  --paper: #fdfdfb;
+  --ink: #17212b;
+  --muted: #5b6875;
+  --line: #d5dce3;
+  --accent: #0d5c63;
+  --accent-soft: #dcecec;
+  --hit: #b3261e;
+  --hit-soft: #fbe3e0;
+  --warn: #9a6200;
+  --warn-soft: #fbefd6;
+  --ok: #1f6d3a;
+  --ok-soft: #dff0e3;
+  --mark-co: #cfe6f5;
+  --mark-ceo: #f6e2b8;
+  --shadow: 0 1px 2px rgba(23,33,43,.06), 0 4px 16px rgba(23,33,43,.06);
+  --f-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-doc: "Noto Serif KR", "AppleMyungjo", "Batang", serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #11171d; --surface: #182029; --paper: #1d2630; --ink: #e4e9ee; --muted: #93a1ae;
+    --line: #2c3743; --accent: #5cbcc3; --accent-soft: #163a3e;
+    --hit: #ff8a7f; --hit-soft: #43201d; --warn: #f0b54c; --warn-soft: #3d2f12;
+    --ok: #74cf92; --ok-soft: #173723; --mark-co: #1d4460; --mark-ceo: #5a4415;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #11171d; --surface: #182029; --paper: #1d2630; --ink: #e4e9ee; --muted: #93a1ae;
+  --line: #2c3743; --accent: #5cbcc3; --accent-soft: #163a3e;
+  --hit: #ff8a7f; --hit-soft: #43201d; --warn: #f0b54c; --warn-soft: #3d2f12;
+  --ok: #74cf92; --ok-soft: #173723; --mark-co: #1d4460; --mark-ceo: #5a4415;
+  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-ui); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1440px; margin: 0 auto; padding-inline: 16px; padding-block: 0 40px; }
+button, input, textarea, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+.num { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--f-mono); }
+.label { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+
+/* top bar */
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; background: var(--bg); border-bottom: 1px solid var(--line); }
+.top-in { max-width: 1440px; margin: 0 auto; padding: 12px 16px; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+.brand { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.seal { width: 36px; height: 36px; border-radius: 8px; background: var(--accent); color: var(--surface); display: grid; place-items: center; font-weight: 700; font-family: var(--f-mono); font-size: 13px; flex: none; }
+.brand h1 { font-size: 17px; font-weight: 700; }
+.brand p { margin: 0; font-size: 12px; color: var(--muted); }
+.top-right { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.dot.on { background: var(--ok); }
+.bell { position: relative; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 12px; display: inline-flex; gap: 6px; align-items: center; font-weight: 600; }
+.bell .count { min-width: 20px; padding: 0 6px; border-radius: 999px; background: var(--hit); color: var(--surface); font-size: 12px; text-align: center; }
+.bell .count.zero { background: var(--line); color: var(--muted); }
+
+/* KPI strip */
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; margin-block: 16px; }
+.kpi { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+.kpi .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.2; }
+.kpi .s { font-size: 12px; color: var(--muted); }
+.kpi.alert .v { color: var(--hit); }
+.kpi.good .v { color: var(--ok); }
+@media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* tabs */
+.tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 16px; overflow-x: auto; }
+.tab { border: 0; background: none; padding: 10px 14px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+
+/* workbench */
+.bench { display: grid; grid-template-columns: 280px minmax(0, 1fr) 400px; gap: 16px; align-items: start; }
+@media (max-width: 1180px) { .bench { grid-template-columns: 260px minmax(0, 1fr); } .panel-right { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+.pane { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
+.pane-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.pane-h h2 { font-size: 14px; font-weight: 700; }
+
+.inbox { list-style: none; margin: 0; padding: 6px; display: grid; gap: 4px; }
+.inbox li button { width: 100%; text-align: left; border: 1px solid transparent; background: none; border-radius: 8px; padding: 10px; display: grid; gap: 4px; }
+.inbox li button:hover { background: var(--bg); }
+.inbox li button[aria-current="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.inbox .row1 { display: flex; justify-content: space-between; gap: 8px; align-items: center; }
+.inbox .no { font-family: var(--f-mono); font-size: 11px; color: var(--muted); }
+.inbox .t { font-weight: 600; font-size: 13px; line-height: 1.35; }
+.inbox .meta { font-size: 12px; color: var(--muted); }
+
+.pill { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px; white-space: nowrap; letter-spacing: .02em; }
+.pill.hit { background: var(--hit-soft); color: var(--hit); }
+.pill.review { background: var(--warn-soft); color: var(--warn); }
+.pill.clear { background: var(--ok-soft); color: var(--ok); }
+.pill.blocked { background: var(--hit-soft); color: var(--hit); outline: 1px dashed var(--hit); }
+.pill.done { background: var(--bg); color: var(--muted); border: 1px solid var(--line); }
+.pill.run { background: var(--accent-soft); color: var(--accent); }
+
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 7px; padding: 7px 12px; font-weight: 600; font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.danger { background: var(--hit); border-color: var(--hit); color: var(--surface); }
+.btn.ghost { border-color: transparent; background: none; color: var(--accent); padding-inline: 6px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.sm { padding: 4px 9px; font-size: 12px; }
+
+/* pipeline */
+.pipe { display: flex; gap: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.step { flex: 1; min-width: 104px; display: grid; gap: 4px; position: relative; padding-right: 8px; }
+.step .bar { height: 4px; border-radius: 2px; background: var(--line); }
+.step.done .bar { background: var(--accent); }
+.step.fail .bar { background: var(--hit); }
+.step.warn .bar { background: var(--warn); }
+.step .n { font-size: 12px; font-weight: 600; }
+.step .d { font-size: 11px; color: var(--muted); }
+
+/* paper */
+.paper-wrap { padding: 18px; }
+.paper { background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 32px 36px; font-family: var(--f-doc); font-size: 14.5px; line-height: 1.85; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; max-width: 72ch; margin: 0 auto; }
+@media (max-width: 560px) { .paper { padding: 20px 16px; font-size: 13.5px; } .paper-wrap { padding: 10px; } }
+mark.co { background: var(--mark-co); color: inherit; padding: 0 2px; border-radius: 2px; box-shadow: inset 0 -2px 0 var(--accent); }
+mark.ceo { background: var(--mark-ceo); color: inherit; padding: 0 2px; border-radius: 2px; box-shadow: inset 0 -2px 0 var(--warn); }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding: 0 18px 14px; }
+.legend span { display: inline-flex; gap: 6px; align-items: center; }
+.sw { width: 14px; height: 10px; border-radius: 2px; display: inline-block; }
+
+/* right panel */
+.panel-right { display: grid; gap: 16px; }
+.sec { padding: 14px; display: grid; gap: 12px; }
+.sec + .sec { border-top: 1px solid var(--line); }
+.field { display: grid; gap: 4px; }
+.field-row { display: flex; gap: 6px; align-items: center; }
+.field input { flex: 1; min-width: 0; border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: var(--paper); font-weight: 600; }
+.vchk { font-size: 11px; font-weight: 700; white-space: nowrap; }
+.vchk.ok { color: var(--ok); }
+.vchk.bad { color: var(--hit); }
+.engine { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.cmp { font-size: 12px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.cmp table { width: 100%; border-collapse: collapse; }
+.cmp th, .cmp td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: top; }
+.cmp tr:last-child td { border-bottom: 0; }
+.cmp th { color: var(--muted); font-weight: 600; background: var(--bg); }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+.banner { border-radius: 8px; padding: 10px 12px; font-size: 13px; display: grid; gap: 2px; }
+.banner.hit { background: var(--hit-soft); color: var(--hit); }
+.banner.review { background: var(--warn-soft); color: var(--warn); }
+.banner.clear { background: var(--ok-soft); color: var(--ok); }
+.banner.blocked { background: var(--hit-soft); color: var(--hit); }
+.banner b { font-size: 14px; }
+
+.q { display: grid; gap: 6px; }
+.q-h { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
+.q-h b { font-size: 13px; }
+.match { display: grid; grid-template-columns: minmax(0, 1fr) 56px; gap: 4px 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; }
+.match.hit { border-color: var(--hit); background: var(--hit-soft); }
+.match.review { border-color: var(--warn); background: var(--warn-soft); }
+.match .nm { font-weight: 600; font-size: 13px; overflow-wrap: anywhere; }
+.match .sc { font-family: var(--f-mono); font-size: 13px; text-align: right; font-weight: 600; }
+.match .info { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); }
+.meter { grid-column: 1 / -1; height: 4px; border-radius: 2px; background: var(--line); position: relative; overflow: hidden; }
+.meter i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
+.match.hit .meter i { background: var(--hit); }
+.match.review .meter i { background: var(--warn); }
+.none { font-size: 12px; color: var(--ok); padding: 8px 10px; border: 1px dashed var(--line); border-radius: 6px; }
+textarea { width: 100%; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--paper); resize: vertical; min-height: 64px; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.reviewed { font-size: 12px; padding: 8px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); }
+
+/* tables (eval, history, WL) */
+.tbl-wrap { overflow-x: auto; }
+table.data { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.data th, table.data td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+table.data th { font-size: 11px; letter-spacing: .05em; color: var(--muted); font-weight: 600; background: var(--bg); position: sticky; top: 0; white-space: nowrap; }
+table.data td.ok { color: var(--ok); font-weight: 600; }
+table.data td.bad { color: var(--hit); font-weight: 600; }
+.evalhead { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 14px; }
+@media (max-width: 760px) { .evalhead { grid-template-columns: minmax(0, 1fr); } }
+.gauge { display: grid; gap: 6px; }
+.gauge .v { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.gbar { height: 8px; border-radius: 4px; background: var(--line); position: relative; }
+.gbar i { position: absolute; inset: 0 auto 0 0; border-radius: 4px; background: var(--accent); }
+.gbar .target { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); }
+.prose { padding: 14px; max-width: 75ch; display: grid; gap: 8px; color: var(--muted); font-size: 13px; }
+.prose p { margin: 0; }
+
+/* drawer, dialog, toast */
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 100%); background: var(--surface); border-left: 1px solid var(--line); box-shadow: var(--shadow); z-index: 40; display: grid; grid-template-rows: auto 1fr; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.drawer ul { list-style: none; margin: 0; padding: 8px; overflow-y: auto; display: grid; gap: 6px; align-content: start; }
+.alert-item { width: 100%; text-align: left; border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px; display: grid; gap: 4px; }
+.alert-item.hit { border-left: 4px solid var(--hit); }
+.alert-item.review { border-left: 4px solid var(--warn); }
+.alert-item.acked { opacity: .6; }
+dialog { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: var(--ink); width: min(680px, calc(100% - 32px)); padding: 0; box-shadow: var(--shadow); }
+dialog::backdrop { background: rgba(10, 16, 22, .45); }
+dialog form { display: grid; gap: 12px; padding: 18px; }
+dialog label { display: grid; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+dialog input[type="text"], dialog select { border: 1px solid var(--line); border-radius: 6px; padding: 7px 10px; background: var(--paper); }
+dialog textarea { min-height: 220px; font-family: var(--f-doc); }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+@media (max-width: 560px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+.toasts { position: fixed; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 50; display: grid; gap: 8px; justify-items: end; pointer-events: none; }
+.toast { pointer-events: auto; max-width: 420px; width: 100%; background: var(--ink); color: var(--bg); border-radius: 10px; padding: 12px 14px; box-shadow: var(--shadow); display: grid; gap: 2px; border-left: 5px solid var(--hit); animation: tin .25s ease-out; }
+.toast.review { border-left-color: var(--warn); }
+.toast.info { border-left-color: var(--accent); }
+.toast b { font-size: 13px; }
+.toast span { font-size: 12px; opacity: .85; }
+@keyframes tin { from { transform: translateY(8px); opacity: .4; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } }
+.example-tag { font-size: 11px; color: var(--warn); font-weight: 600; }
+</style>
+
+<header class="top">
+  <div class="top-in">
+    <div class="brand">
+      <div class="seal" aria-hidden="true">WLF</div>
+      <div>
+        <h1>WLF 자동 스크리닝</h1>
+        <p>준법지원부 AML · 계약체결 품의서 요주의 리스트 필터링</p>
+      </div>
+    </div>
+    <div class="top-right">
+      <span class="chip" id="chipAi"><span class="dot" id="dotAi"></span><span id="txtAi">AI 추출 연결 확인 중</span></span>
+      <span class="chip" id="chipDb"><span class="dot" id="dotDb"></span><span id="txtDb">공유 저장소 확인 중</span></span>
+      <button class="bell" id="bellBtn" type="button" aria-label="위험 알림함 열기">알림 <span class="count num zero" id="bellCount">0</span></button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="kpis" aria-label="처리 현황">
+    <div class="kpi"><span class="label">수신 품의서</span><span class="v" id="kTotal">0</span><span class="s" id="kTotalS">스크리닝 완료 0건</span></div>
+    <div class="kpi alert"><span class="label">WL 위험 알림</span><span class="v" id="kAlert">0</span><span class="s" id="kAlertS">미확인 0건</span></div>
+    <div class="kpi"><span class="label">추출 정확도 (검증세트)</span><span class="v" id="kAcc">–</span><span class="s" id="kAccS">목표 95% 이상</span></div>
+    <div class="kpi good" id="kMisBox"><span class="label">불일치 · 검색누락</span><span class="v" id="kMis">0</span><span class="s" id="kMisS">목표 0건</span></div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tab-screen" aria-selected="true" data-tab="screen" type="button">스크리닝</button>
+    <button class="tab" role="tab" id="tab-eval" aria-selected="false" data-tab="eval" type="button">추출 정확도 검증</button>
+    <button class="tab" role="tab" id="tab-hist" aria-selected="false" data-tab="hist" type="button">검토 이력</button>
+    <button class="tab" role="tab" id="tab-wl" aria-selected="false" data-tab="wl" type="button">WL 명단</button>
+  </nav>
+
+  <!-- 스크리닝 -->
+  <section id="view-screen" class="bench">
+    <aside class="pane">
+      <div class="pane-h">
+        <h2>포털 수신함</h2>
+        <button class="btn sm primary" id="newBtn" type="button">+ 품의서 등록</button>
+      </div>
+      <ul class="inbox" id="inbox"></ul>
+      <p class="note" style="padding: 0 14px 14px">예시 품의서 6건이 기본으로 들어 있습니다. 업체·인물·WL 명단은 모두 테스트용 가상 데이터입니다.</p>
+    </aside>
+
+    <article class="pane" aria-label="품의서 원문">
+      <div class="pane-h">
+        <h2 id="docTitle">품의서</h2>
+        <span class="no mono" id="docNo" style="font-size:12px;color:var(--muted)"></span>
+      </div>
+      <div class="pipe" id="pipe"></div>
+      <div class="paper-wrap"><div class="paper" id="paper"></div></div>
+      <div class="legend">
+        <span><i class="sw" style="background:var(--mark-co)"></i>추출된 계약업체명</span>
+        <span><i class="sw" style="background:var(--mark-ceo)"></i>추출된 대표자명</span>
+        <span>표시된 위치가 원문 대조 근거입니다</span>
+      </div>
+    </article>
+
+    <div class="panel-right">
+      <div class="pane">
+        <div class="pane-h"><h2>1 · 추출 결과</h2><span id="engPill"></span></div>
+        <div class="sec" id="extractSec"></div>
+      </div>
+      <div class="pane">
+        <div class="pane-h"><h2>2 · WLF 임의수행 조회</h2><span class="note" id="wlfTime"></span></div>
+        <div class="sec" id="wlfSec"></div>
+      </div>
+      <div class="pane">
+        <div class="pane-h"><h2>3 · 담당자 판정</h2></div>
+        <div class="sec" id="reviewSec"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 정확도 검증 -->
+  <section id="view-eval" hidden>
+    <div class="pane">
+      <div class="pane-h">
+        <h2>추출 정확도 검증세트 (합성 품의서 24건)</h2>
+        <button class="btn primary" id="evalAiBtn" type="button">Claude로 검증세트 실행</button>
+      </div>
+      <div class="evalhead">
+        <div class="gauge"><span class="label">규칙 기반 추출기</span><span class="v" id="gRule">–</span><div class="gbar"><i id="gRuleBar"></i><span class="target" style="left:95%"></span></div><span class="note" id="gRuleS"></span></div>
+        <div class="gauge"><span class="label">Claude AI 추출</span><span class="v" id="gAi">미실행</span><div class="gbar"><i id="gAiBar" style="width:0"></i><span class="target" style="left:95%"></span></div><span class="note" id="gAiS">버튼을 누르면 24건을 한 번에 보내 측정합니다.</span></div>
+        <div class="gauge"><span class="label">측정 방식</span><span class="note">필드 단위 정확도 = 정답과 일치한 필드 수 ÷ 전체 필드 수 (업체명 24 + 대표자 24 = 48). 법인격 표기(주식회사, ㈜)와 띄어쓰기는 정규화 후 비교합니다. 검은 눈금이 목표 95%입니다.</span></div>
+      </div>
+      <div class="tbl-wrap"><table class="data" id="evalTbl"></table></div>
+      <div class="prose">
+        <p>검증세트에는 라벨형(계약상대방: …), 표 형식, 문장형, 그리고 기존 업체와 신규 업체가 함께 적힌 함정 문서가 섞여 있습니다. 규칙 기반 추출기는 함정 문서에서 기존 업체를 잡는 식으로 틀리며, 이 차이가 AI 추출을 쓰는 이유입니다.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 검토 이력 -->
+  <section id="view-hist" hidden>
+    <div class="pane">
+      <div class="pane-h"><h2>담당자 검토 이력</h2><span class="note" id="histNote"></span></div>
+      <div class="tbl-wrap"><table class="data" id="histTbl"></table></div>
+    </div>
+  </section>
+
+  <!-- WL 명단 -->
+  <section id="view-wl" hidden>
+    <div class="pane">
+      <div class="pane-h"><h2>요주의 리스트 (WL)</h2><span class="example-tag">테스트용 가상 명단 · 실제 제재 대상 아님</span></div>
+      <div class="tbl-wrap"><table class="data" id="wlTbl"></table></div>
+      <div class="prose">
+        <p>판정 기준: 유사도 0.95 이상은 <b>WL 일치</b>로 즉시 알림과 거래 보류, 0.80 이상 0.95 미만은 <b>유사 · 검토 필요</b>로 알림, 0.80 미만은 <b>이상 없음</b>입니다.</p>
+        <p>유사도는 법인격 표기와 공백·기호를 지운 뒤 한글을 자모 단위로 분해해 편집거리로 계산합니다. 그래서 "트레이딩"과 "트래이딩" 같은 오타, 띄어쓰기 차이, 별칭(영문명)까지 걸러냅니다. 운영 환경에서는 이 명단 대신 AML 시스템 WLF 조회 API를 호출하도록 연결합니다.</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer" hidden aria-label="위험 알림함">
+  <div class="pane-h"><h2>위험 알림함</h2><button class="btn sm" id="drawerClose" type="button">닫기</button></div>
+  <ul id="alertList"></ul>
+</aside>
+
+<dialog id="newDlg">
+  <form id="newForm" method="dialog">
+    <h2 style="font-size:16px">품의서 등록</h2>
+    <div class="grid2">
+      <label for="nTitle">제목<input type="text" id="nTitle" required placeholder="예: 콜센터 상담 솔루션 도입 계약의 건"></label>
+      <label for="nDept">기안부서<input type="text" id="nDept" required placeholder="예: 디지털채널부"></label>
+    </div>
+    <label for="nFile">텍스트 파일 불러오기 (.txt)<input type="file" id="nFile" accept=".txt,text/plain"></label>
+    <label for="nBody">품의서 본문<textarea id="nBody" required placeholder="품의서 본문을 붙여 넣으세요."></textarea></label>
+    <p class="note" id="nHint"></p>
+    <div class="actions" style="justify-content:flex-end">
+      <button class="btn" type="button" id="nCancel">취소</button>
+      <button class="btn primary" type="submit" id="nSubmit">등록하고 스크리닝</button>
+    </div>
+  </form>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+"use strict";
+/* ---------- 테스트용 가상 WL 명단 ---------- */
+const WL = [
+  { id: "WL-0412", type: "법인", name: "델타오션트레이딩", aliases: ["Delta Ocean Trading", "델타해양무역"], list: "가상 금융제재 대상(테스트)", reason: "제재국 선박 중개 의심" },
+  { id: "WL-0587", type: "법인", name: "그린브릿지홀딩스", aliases: ["Green Bridge Holdings"], list: "가상 내부 요주의(테스트)", reason: "자금세탁 연루 보도" },
+  { id: "WL-0633", type: "법인", name: "북성무역상사", aliases: ["Buksung Trading"], list: "가상 금융제재 대상(테스트)", reason: "이중용도 물품 수출" },
+  { id: "WL-0702", type: "법인", name: "에이펙스캐피탈파트너스", aliases: ["Apex Capital Partners"], list: "가상 PEP 관련 법인(테스트)", reason: "고위공직자 관련" },
+  { id: "WL-1120", type: "개인", name: "류정한", aliases: ["Ryu Jeonghan", "류정환"], list: "가상 내부 요주의(테스트)", reason: "그린브릿지홀딩스 실소유자" },
+  { id: "WL-1183", type: "개인", name: "마동철", aliases: ["Ma Dongcheol"], list: "가상 금융제재 대상(테스트)", reason: "불법 송금 조직 관여" },
+  { id: "WL-1209", type: "개인", name: "황보세강", aliases: ["Hwangbo Segang"], list: "가상 PEP(테스트)", reason: "해외 정치적 주요인물" },
+  { id: "WL-1255", type: "개인", name: "탁인규", aliases: ["Tak Ingyu"], list: "가상 내부 요주의(테스트)", reason: "보이스피싱 계좌 명의인" }
+];
+const T_HIT = 0.95, T_REVIEW = 0.80;
+
+/* ---------- 예시 품의서 (가상) ---------- */
+const SAMPLE_DOCS = [
+  { id: "d1", no: "총무-2026-1014-03", title: "본점 시설관리 용역 계약 갱신의 건", dept: "총무부", receivedAt: "2026-10-14T08:42:00", text:
+`품 의 서
+
+문서번호 : 총무-2026-1014-03
+기안부서 : 총무부   기안자 : 박지훈 과장
+결    재 : 총무부장 정민재
+제    목 : 본점 시설관리 용역 계약 갱신의 건
+
+1. 목적
+  본점 및 별관의 시설관리(전기·기계·소방) 용역 계약기간 만료에 따라 아래와 같이 계약을 갱신하고자 합니다.
+
+2. 계약 개요
+  가. 계약명 : 2027년 본점 시설관리 용역
+  나. 계약상대방 : 주식회사 한결에프엠 (대표이사 김도윤)
+  다. 사업자등록번호 : 214-81-5XXXX
+  라. 계약기간 : 2027.01.01 ~ 2027.12.31 (1년)
+  마. 계약금액 : 금 일십이억삼천만원정 (₩1,230,000,000, VAT 포함)
+  바. 계약방법 : 수의계약 (기존 업체 갱신)
+
+3. 첨부
+  1) 견적서 1부  2) 사업자등록증 사본 1부.  끝.` },
+  { id: "d2", no: "IT-2026-1014-11", title: "영업점 단말 유지보수 신규 계약의 건", dept: "IT운영부", receivedAt: "2026-10-14T09:05:00", text:
+`품 의 서
+
+문서번호 : IT-2026-1014-11
+기안부서 : IT운영부   기안자 : 최유나 대리
+제    목 : 영업점 단말 유지보수 신규 계약의 건
+
+1. 추진 배경
+  영업점 창구 단말 노후화에 따른 장애 대응 강화를 위해 전문 유지보수 업체와 신규 계약을 체결하고자 합니다.
+
+2. 업체 현황
+  | 구    분 | 내          용          |
+  | 상    호 | ㈜새벽정보통신           |
+  | 대 표 자 | 이서연                   |
+  | 소 재 지 | 서울특별시 구로구 디지털로 XXX |
+  | 설립일자 | 2011.03.02               |
+
+3. 계약 조건
+  가. 계약기간 : 계약일로부터 2년
+  나. 계약금액 : 월 ₩38,500,000 (VAT 별도)
+  다. 선정방법 : 제한경쟁입찰 (3개사 참여, 최저가 낙찰).  끝.` },
+  { id: "d3", no: "자금-2026-1014-02", title: "외화 결제대행 서비스 이용 계약의 건", dept: "자금부", receivedAt: "2026-10-14T09:31:00", text:
+`품 의 서
+
+문서번호 : 자금-2026-1014-02
+기안부서 : 자금부   기안자 : 오세진 차장
+제    목 : 외화 결제대행 서비스 이용 계약의 건 (긴급)
+
+1. 목적
+  해외 수입대금 결제 일정에 맞추기 위해 외화 결제대행 서비스 이용 계약을 긴급히 체결하고자 합니다.
+
+2. 계약 개요
+  가. 계약상대방 : 델타 오션 트래이딩(주)
+  나. 대 표 : 장문석
+  다. 계약기간 : 2026.10.20 ~ 2027.10.19
+  라. 수수료 : 결제금액의 0.35%
+
+3. 요청사항
+  결제 일정상 10월 17일까지 체결이 필요하오니 준법감시 검토를 우선 처리하여 주시기 바랍니다.  끝.` },
+  { id: "d4", no: "투자-2026-1014-07", title: "대체투자 자문 용역 계약 체결의 건", dept: "투자금융부", receivedAt: "2026-10-14T10:12:00", text:
+`품 의 서
+
+문서번호 : 투자-2026-1014-07
+기안부서 : 투자금융부   기안자 : 강태오 과장
+제    목 : 대체투자 자문 용역 계약 체결의 건
+
+1. 개요
+  해외 인프라 펀드 투자 검토를 위하여 외부 자문사와 자문 용역 계약을 체결하고자 합니다.
+
+2. 계약상대방
+  - 업체명 : 그린브릿지홀딩스 주식회사
+  - 대표자명 : 류정한
+  - 자문범위 : 투자대상 실사, 구조 설계, 가격 협상 지원
+
+3. 계약금액 : 금 삼억원정 (₩300,000,000, VAT 별도)
+4. 계약기간 : 2026.11.01 ~ 2027.04.30.  끝.` },
+  { id: "d5", no: "홍보-2026-1014-05", title: "연말 고객 사은품 인쇄물 제작 계약의 건", dept: "브랜드전략부", receivedAt: "2026-10-14T10:48:00", text:
+`품 의 서
+
+문서번호 : 홍보-2026-1014-05
+기안부서 : 브랜드전략부   기안자 : 윤하람 대리
+제    목 : 연말 고객 사은품 인쇄물 제작 계약의 건
+
+  당행은 연말 고객 사은행사용 탁상달력 및 가계부 제작을 위하여 가람인쇄(대표 오수빈)와 아래와 같이 계약을 체결하고자 합니다.
+
+  가. 제작수량 : 탁상달력 120,000부, 가계부 80,000부
+  나. 계약금액 : ₩412,000,000 (VAT 포함)
+  다. 납품기한 : 2026.12.05
+  라. 선정사유 : 3개사 견적 비교 결과 최저가.  끝.` },
+  { id: "d6", no: "정보보호-2026-1014-01", title: "보안관제 서비스 계약 갱신의 건", dept: "정보보호부", receivedAt: "2026-10-14T11:20:00", text:
+`품 의 서
+
+문서번호 : 정보보호-2026-1014-01
+기안부서 : 정보보호부   기안자 : 서지안 과장
+제    목 : 보안관제 서비스 계약 갱신의 건
+
+1. 목적
+  24시간 보안관제 서비스 계약 만료에 따라 기존 업체와 계약을 갱신하고자 합니다.
+
+2. 공급업체 : 라온시큐리티 주식회사
+   공동대표 : 한소율, 마동철
+   (2026년 7월 공동대표 선임 변경 등기 완료)
+
+3. 계약 조건
+  가. 계약기간 : 2027.01.01 ~ 2028.12.31 (2년)
+  나. 계약금액 : 연 ₩864,000,000 (VAT 별도).  끝.` }
+];
+
+/* ---------- 정규화 · 유사도 ---------- */
+const LEGAL = /주식회사|유한책임회사|유한회사|합자회사|합명회사|사단법인|재단법인|㈜|\(\s*주\s*\)|\(\s*유\s*\)|\bco\.?\s*,?\s*ltd\.?|\binc\.?|\bcorp(oration)?\.?|\blimited\b|\bllc\b/gi;
+function norm(s) {
+  return String(s || "").normalize("NFC").replace(LEGAL, "").replace(/[\s\-_.,·・()\[\]{}'"“”‘’&/]/g, "").toLowerCase();
+}
+const CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ", JUNG = "ㅏㅐㅑㅒㅓㅔㅕㅖㅗㅘㅙㅚㅛㅜㅝㅞㅟㅠㅡㅢㅣ", JONG = " ㄱㄲㄳㄴㄵㄶㄷㄹㄺㄻㄼㄽㄾㄿㅀㅁㅂㅄㅅㅆㅇㅈㅊㅋㅌㅍㅎ";
+function jamo(s) {
+  let out = "";
+  for (const ch of s) {
+    const c = ch.charCodeAt(0);
+    if (c >= 0xAC00 && c <= 0xD7A3) {
+      const i = c - 0xAC00;
+      out += CHO[Math.floor(i / 588)] + JUNG[Math.floor((i % 588) / 28)] + (i % 28 ? JONG[i % 28] : "");
+    } else out += ch;
+  }
+  return out;
+}
+function lev(a, b) {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j), cur = new Array(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+function similarity(a, b) {
+  const x = norm(a), y = norm(b);
+  if (!x || !y) return 0;
+  if (x === y) return 1;
+  const jx = jamo(x), jy = jamo(y);
+  let s = 1 - lev(jx, jy) / Math.max(jx.length, jy.length);
+  // 포함 관계 (예: 그린브릿지홀딩스코리아) 는 최소 '유사'로 끌어올림
+  const short = x.length <= y.length ? x : y, long = short === x ? y : x;
+  if (short.length >= 3 && long.includes(short)) s = Math.max(s, 0.9);
+  return s;
+}
+function screenName(q, kind) {
+  const res = [];
+  for (const e of WL) {
+    let best = 0, via = e.name;
+    for (const nm of [e.name, ...e.aliases]) { const s = similarity(q, nm); if (s > best) { best = s; via = nm; } }
+    // 법인명 조회는 법인 엔트리에, 대표자 조회는 개인 엔트리에 가중
+    if ((kind === "company" && e.type === "개인") || (kind === "person" && e.type === "법인")) best *= 0.9;
+    if (best >= 0.6) res.push({ entry: e, score: best, via });
+  }
+  return res.sort((a, b) => b.score - a.score).slice(0, 3);
+}
+const levelOf = s => s >= T_HIT ? "hit" : s >= T_REVIEW ? "review" : "clear";
+// 판정 경계와 표시가 어긋나지 않도록 내림 표시 (0.948 → 0.94)
+const fs = s => (Math.floor(s * 100) / 100).toFixed(2);
+
+/* ---------- 규칙 기반 추출기 (AI 미사용 시 · 교차검증용) ---------- */
+const PERSON = "[가-힣]{2,4}";
+function cleanCo(s) { return s.replace(/^[\s:：|\-]+|[\s|,]+$/g, "").replace(/\s*(와|과|와의|과의)$/, "").trim(); }
+function ruleExtract(text) {
+  let company = null, ceos = [];
+  const coRe = /(?:계약\s*상대방|계약\s*업체명?|거래\s*상대방|업\s*체\s*명|상\s*호(?:명)?|공급\s*(?:업체|자)|수급인)\s*[:：|]\s*\|?\s*([^\n|,]+?)(?=\s*(?:\(\s*대표|\||,|\/|\n|$))/;
+  const m1 = text.match(coRe);
+  if (m1) company = cleanCo(m1[1]);
+  if (!company) {
+    const m2 = text.match(/([가-힣A-Za-z0-9㈜()]+?)\s*\(\s*대표(?:이사)?\s+[가-힣]{2,4}\s*\)/);
+    if (m2) company = cleanCo(m2[1]);
+  }
+  const ceoRe = new RegExp("(?:공동\\s*대표(?:이사)?|대\\s*표\\s*이\\s*사|대\\s*표\\s*자(?:\\s*명)?|대\\s*표)\\s*(?:[:：|]|은|는)?\\s*\\|?\\s*(" + PERSON + "(?:\\s*[,·]\\s*" + PERSON + ")*)(?![가-힣])");
+  const m3 = text.match(ceoRe);
+  if (m3) ceos = m3[1].split(/\s*[,·]\s*/).filter(Boolean);
+  return { company, ceos, engine: "rule", confidence: company && ceos.length ? 0.8 : 0.3, evidence: "" };
+}
+
+/* ---------- Claude 추출 ---------- */
+function aiPrompt(text) {
+  return `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다.
+아래 '계약체결 품의서'에서 이번 계약의 상대방(계약업체)의 상호와 대표자 성명을 추출하세요.
+
+규칙:
+- 원문에 적힌 문자열을 그대로 복사합니다. 철자, 띄어쓰기, 법인격 표기((주), 주식회사, ㈜)를 바꾸지 마세요.
+- 기안자, 결재자, 당행 직원, 계약이 끝나는 기존 업체는 제외합니다. 이번에 계약하는 업체만 추출합니다.
+- 공동대표이면 모두 넣습니다.
+- 찾을 수 없으면 company는 null, ceos는 빈 배열입니다.
+- evidence에는 근거가 된 원문 한 줄을 그대로 넣습니다.
+
+JSON 객체 하나만 답하세요. 다른 글은 쓰지 마세요.
+{"company": string|null, "ceos": string[], "evidence": string, "confidence": 0~1 사이 숫자}
+
+<품의서>
+${text}
+</품의서>`;
+}
+
+/* ---------- 상태 ---------- */
+const state = {
+  docs: SAMPLE_DOCS.map(d => ({ ...d, example: true })),
+  ext: {},        // docId -> {company, ceos, engine, evidence, confidence, rule}
+  aiExt: {},      // docId -> stored AI extraction (shared)
+  reviews: {},    // docId -> review
+  selected: "d3",
+  tab: "screen",
+  aiBusy: {},
+  ruleAcc: null, aiAcc: null, aiEvalRows: null
+};
+let sample = null, db = null, user = null, myId = null, aiConsented = false;
+const seenAlerts = new Set();
+
+/* ---------- 계산 ---------- */
+function extractionFor(doc) {
+  const rule = ruleExtract(doc.text);
+  const ai = state.aiExt[doc.id];
+  const manual = state.ext[doc.id];
+  const base = manual || ai || rule;
+  return { ...base, rule, ai };
+}
+function verifyIn(text, s) { return !!s && text.includes(s); }
+function evaluate(doc) {
+  const x = extractionFor(doc);
+  const issues = [];
+  const coOk = verifyIn(doc.text, x.company);
+  const ceoOk = x.ceos.map(c => verifyIn(doc.text, c));
+  if (!x.company) issues.push("계약업체명을 찾지 못했습니다.");
+  else if (!coOk) issues.push("계약업체명이 원문과 글자 단위로 일치하지 않습니다.");
+  if (!x.ceos.length) issues.push("대표자명을 찾지 못했습니다.");
+  ceoOk.forEach((ok, i) => { if (!ok) issues.push(`대표자명 '${x.ceos[i]}'이 원문에 없습니다.`); });
+  // 교차검증: AI 결과와 규칙 결과가 다르면 담당자 확인 필요 (단, 수기 확정값은 제외)
+  let crossDiff = false;
+  if (x.engine === "ai" && x.rule) {
+    const sameCo = norm(x.rule.company) === norm(x.company);
+    const sameCeo = [...x.rule.ceos].map(norm).sort().join() === [...x.ceos].map(norm).sort().join();
+    crossDiff = !(sameCo && sameCeo);
+  }
+  const queries = [];
+  if (x.company) queries.push({ kind: "company", label: "계약업체명", q: x.company, matches: screenName(x.company, "company") });
+  x.ceos.forEach(c => queries.push({ kind: "person", label: "대표자명", q: c, matches: screenName(c, "person") }));
+  const top = Math.max(0, ...queries.flatMap(q => q.matches.map(m => m.score)));
+  let verdict = levelOf(top);
+  const blocked = issues.length > 0;
+  if (blocked && verdict === "clear") verdict = "blocked";
+  return { x, issues, coOk, ceoOk, crossDiff, queries, top, verdict, blocked };
+}
+const VERDICT = {
+  hit: { pill: "WL 일치", title: "요주의 리스트 일치", sub: "거래를 보류하고 담당자 확인 후 보고 절차를 진행하세요." },
+  review: { pill: "유사 · 검토", title: "유사 명칭 검토 필요", sub: "표기 차이 또는 오타 가능성이 있습니다. 동일인·동일법인 여부를 확인하세요." },
+  clear: { pill: "이상 없음", title: "WL 매칭 없음", sub: "조회한 모든 이름이 유사도 0.80 미만입니다." },
+  blocked: { pill: "추출 확인", title: "자동 조회 보류", sub: "추출값이 원문과 맞지 않아 담당자 확인이 필요합니다." }
+};
+
+/* ---------- 렌더 유틸 ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const fmtTime = iso => { try { const d = new Date(iso); return d.toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }); } catch { return iso; } };
+function highlight(text, co, ceos) {
+  const ranges = [];
+  const add = (term, cls) => { if (!term) return; let i = 0; while ((i = text.indexOf(term, i)) !== -1) { ranges.push([i, i + term.length, cls]); i += term.length; } };
+  add(co, "co"); (ceos || []).forEach(c => add(c, "ceo"));
+  ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
+  let out = "", pos = 0;
+  for (const [s, e, cls] of ranges) { if (s < pos) continue; out += esc(text.slice(pos, s)) + `<mark class="${cls}">${esc(text.slice(s, e))}</mark>`; pos = e; }
+  return out + esc(text.slice(pos));
+}
+function toast(kind, title, body) {
+  const el = document.createElement("div");
+  el.className = "toast " + kind;
+  el.innerHTML = `<b>${esc(title)}</b><span>${esc(body)}</span>`;
+  $("#toasts").append(el);
+  setTimeout(() => el.remove(), 7000);
+}
+
+/* ---------- 렌더 ---------- */
+function render() {
+  const evals = Object.fromEntries(state.docs.map(d => [d.id, evaluate(d)]));
+  renderKpis(evals);
+  renderInbox(evals);
+  renderDoc(evals);
+  renderAlerts(evals);
+  if (state.tab === "hist") renderHistory();
+  checkNewAlerts(evals);
+}
+function renderKpis(evals) {
+  const docs = state.docs, n = docs.length;
+  const screened = docs.filter(d => evals[d.id].queries.length && !evals[d.id].blocked).length;
+  const alerts = docs.filter(d => ["hit", "review"].includes(evals[d.id].verdict));
+  const unacked = alerts.filter(d => !state.reviews[d.id]).length;
+  $("#kTotal").textContent = n;
+  $("#kTotalS").textContent = `WLF 자동 조회 완료 ${screened}건`;
+  $("#kAlert").textContent = alerts.length;
+  $("#kAlertS").textContent = `미확인 ${unacked}건 · 일치 ${alerts.filter(d => evals[d.id].verdict === "hit").length}건`;
+  const acc = state.aiAcc ?? state.ruleAcc;
+  $("#kAcc").textContent = acc == null ? "–" : (acc * 100).toFixed(1) + "%";
+  $("#kAccS").textContent = state.aiAcc != null ? `Claude 기준 · 목표 95% 이상` : `규칙 기반 기준 · Claude 측정 전`;
+  // 불일치: 원문과 맞지 않는 추출값 / 교차검증 불일치 미해결. 누락: 조회되지 않은 이름이 남은 문서.
+  const mismatch = docs.filter(d => { const e = evals[d.id]; return (e.blocked || e.crossDiff) && !state.reviews[d.id]; }).length;
+  const missed = docs.filter(d => !evals[d.id].queries.length).length;
+  const total = mismatch + missed;
+  $("#kMis").textContent = total;
+  $("#kMisS").textContent = total ? `불일치 ${mismatch} · 누락 ${missed} · 담당자 확인 필요` : "목표 0건 달성 · 모든 이름 조회 완료";
+  $("#kMisBox").className = "kpi " + (total ? "alert" : "good");
+  const unackedAll = unacked;
+  const bc = $("#bellCount"); bc.textContent = unackedAll; bc.classList.toggle("zero", !unackedAll);
+}
+function statusPill(d, e) {
+  if (state.aiBusy[d.id]) return `<span class="pill run">AI 추출 중</span>`;
+  if (state.reviews[d.id]) return `<span class="pill done">검토 완료</span>`;
+  return `<span class="pill ${e.verdict}">${VERDICT[e.verdict].pill}</span>`;
+}
+function renderInbox(evals) {
+  const docs = [...state.docs].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  $("#inbox").innerHTML = docs.map(d => `<li><button type="button" data-doc="${esc(d.id)}" aria-current="${d.id === state.selected}">
+    <span class="row1"><span class="no">${esc(d.no)}</span>${statusPill(d, evals[d.id])}</span>
+    <span class="t">${esc(d.title)}</span>
+    <span class="meta">${esc(d.dept)} · ${fmtTime(d.receivedAt)}${d.example ? ' · <span class="example-tag">예시</span>' : ""}</span>
+  </button></li>`).join("");
+}
+function renderDoc(evals) {
+  const d = state.docs.find(x => x.id === state.selected) || state.docs[0];
+  if (!d) return;
+  const e = evals[d.id], x = e.x;
+  $("#docTitle").textContent = d.title;
+  $("#docNo").textContent = d.no;
+  $("#paper").innerHTML = highlight(d.text, x.company, x.ceos);
+
+  const busy = state.aiBusy[d.id];
+  const steps = [
+    { n: "포털 수신", d: fmtTime(d.receivedAt), s: "done" },
+    { n: "추출", d: busy ? "Claude 분석 중" : x.engine === "ai" ? "Claude AI" : x.engine === "manual" ? "담당자 확정" : "규칙 기반", s: busy ? "" : (x.company && x.ceos.length ? "done" : "fail") },
+    { n: "원문 대조", d: e.issues.length ? `${e.issues.length}건 확인 필요` : e.crossDiff ? "교차검증 차이" : "전 항목 일치", s: e.issues.length ? "fail" : e.crossDiff ? "warn" : "done" },
+    { n: "WLF 자동조회", d: `${e.queries.length}건 조회`, s: e.queries.length ? "done" : "fail" },
+    { n: "판정 · 알림", d: VERDICT[e.verdict].pill, s: e.verdict === "clear" ? "done" : e.verdict === "review" ? "warn" : "fail" }
+  ];
+  $("#pipe").innerHTML = steps.map(s => `<div class="step ${s.s}"><div class="bar"></div><span class="n">${s.n}</span><span class="d">${esc(s.d)}</span></div>`).join("");
+
+  // 1 · 추출
+  const engLabel = x.engine === "ai" ? "Claude AI" : x.engine === "manual" ? "담당자 확정" : "규칙 기반";
+  $("#engPill").innerHTML = `<span class="pill run">${engLabel}</span>`;
+  const ceoRows = (x.ceos.length ? x.ceos : [""]).map((c, i) => `<div class="field-row">
+      <input id="fCeo${i}" data-ceo="${i}" value="${esc(c)}" aria-label="대표자명 ${i + 1}">
+      ${c ? `<span class="vchk ${e.ceoOk[i] ? "ok" : "bad"}">${e.ceoOk[i] ? "원문 일치" : "원문 없음"}</span>` : ""}
+    </div>`).join("");
+  let cmp = "";
+  if (x.ai || x.engine === "manual") {
+    const r = x.rule, a = x.ai;
+    cmp = `<div class="cmp"><table>
+      <tr><th></th><th>Claude AI</th><th>규칙 기반</th></tr>
+      <tr><td>업체명</td><td>${esc(a?.company ?? "–")}</td><td>${esc(r.company ?? "–")}</td></tr>
+      <tr><td>대표자</td><td>${esc(a?.ceos?.join(", ") || "–")}</td><td>${esc(r.ceos.join(", ") || "–")}</td></tr>
+    </table></div>
+    ${e.crossDiff ? `<p class="note" style="color:var(--warn)">두 추출기의 결과가 다릅니다. 원문 표시를 확인하고 값을 확정하세요.</p>` : ""}`;
+  }
+  const aiBtn = sample
+    ? `<button class="btn sm primary" id="aiBtn" type="button" ${busy ? "disabled" : ""}>${busy ? "Claude 분석 중…" : x.ai ? "Claude로 다시 추출" : "Claude로 추출"}</button>`
+    : `<span class="note">Claude 연결이 없어 규칙 기반으로 추출했습니다.</span>`;
+  $("#extractSec").innerHTML = `
+    <div class="field"><label class="label" for="fCo">계약업체명</label>
+      <div class="field-row"><input id="fCo" value="${esc(x.company ?? "")}">
+      ${x.company ? `<span class="vchk ${e.coOk ? "ok" : "bad"}">${e.coOk ? "원문 일치" : "원문 없음"}</span>` : ""}</div></div>
+    <div class="field"><span class="label">대표자명</span>${ceoRows}
+      <button class="btn ghost sm" id="addCeo" type="button" style="justify-self:start">+ 공동대표 추가</button></div>
+    ${x.evidence ? `<p class="note">근거: <span style="font-family:var(--f-doc)">“${esc(x.evidence)}”</span>${x.confidence != null ? ` · 신뢰도 ${Math.round(x.confidence * 100)}%` : ""}</p>` : ""}
+    ${cmp}
+    ${e.issues.length ? `<div class="banner blocked">${e.issues.map(esc).join("<br>")}</div>` : ""}
+    <div class="actions">${aiBtn}<button class="btn sm" id="applyBtn" type="button">값 확정 후 재조회</button></div>`;
+
+  // 2 · WLF
+  $("#wlfTime").textContent = e.queries.length ? `조회 ${e.queries.length}건 · 수기 입력 0건` : "";
+  const v = VERDICT[e.verdict];
+  $("#wlfSec").innerHTML = `<div class="banner ${e.verdict}"><b>${v.title}${e.top ? ` · 최고 유사도 ${fs(e.top)}` : ""}</b><span>${v.sub}</span></div>` +
+    (e.queries.length ? e.queries.map(q => `<div class="q">
+      <div class="q-h"><span><span class="label">${q.label}</span> <b>${esc(q.q)}</b></span><span class="mono" style="color:var(--muted)">정규화: ${esc(norm(q.q))}</span></div>
+      ${q.matches.length ? q.matches.map(m => { const lv = levelOf(m.score); return `<div class="match ${lv}">
+        <span class="nm">${esc(m.entry.name)} <span class="pill ${lv}">${lv === "hit" ? "일치" : lv === "review" ? "유사" : "참고"}</span></span>
+        <span class="sc">${fs(m.score)}</span>
+        <span class="meter"><i style="width:${(m.score * 100).toFixed(0)}%"></i></span>
+        <span class="info">${esc(m.entry.id)} · ${esc(m.entry.type)} · ${esc(m.entry.list)} · ${esc(m.entry.reason)}${m.via !== m.entry.name ? ` · 별칭 '${esc(m.via)}'로 매칭` : ""}</span>
+      </div>`; }).join("") : `<div class="none">WL 매칭 없음 (유사도 0.60 이상 항목 없음)</div>`}
+    </div>`).join("") : `<p class="note">조회할 이름이 없습니다. 추출값을 입력하세요.</p>`);
+
+  // 3 · 판정
+  const rv = state.reviews[d.id];
+  if (rv) {
+    $("#reviewSec").innerHTML = `<div class="reviewed"><b>${rv.decision === "hold" ? "거래 보류 · 보고" : "이상 없음 확인"}</b> · ${fmtTime(rv.at)} · <span data-uid="${esc(rv.by || "")}">${rv.by ? "…" : "이 브라우저"}</span>
+      ${rv.memo ? `<div style="margin-top:4px">${esc(rv.memo)}</div>` : ""}
+      <div class="note" style="margin-top:4px">확정값: ${esc(rv.company)} / ${esc((rv.ceos || []).join(", "))} · 판정 시 최고 유사도 ${fs(Number(rv.top || 0))}</div></div>
+      <button class="btn sm" id="reopenBtn" type="button" style="justify-self:start">판정 다시 하기</button>`;
+    resolveNames();
+  } else {
+    const needHold = e.verdict === "hit";
+    $("#reviewSec").innerHTML = `
+      <label class="label" for="memo">검토 의견</label>
+      <textarea id="memo" placeholder="${needHold ? "예: WL-0587 동일 법인 확인. 계약 보류 및 보고 진행." : "예: 대표자 생년월일 대조 결과 동명이인 아님 확인."}"></textarea>
+      <div class="actions">
+        <button class="btn ${needHold ? "" : "primary"}" id="okBtn" type="button" ${e.blocked ? "disabled" : ""}>이상 없음 확인</button>
+        <button class="btn ${needHold ? "danger" : ""}" id="holdBtn" type="button">거래 보류 · 보고</button>
+      </div>
+      ${e.blocked ? `<p class="note">추출값이 원문과 맞지 않아 '이상 없음'으로 닫을 수 없습니다. 값을 확정한 뒤 재조회하세요.</p>` : ""}
+      <p class="note">판정은 ${db ? "팀 공유 이력에 저장되고 모든 담당자 화면에 반영됩니다" : "이 브라우저에만 남습니다 (공유 저장소 미연결)"}.</p>`;
+  }
+}
+function renderAlerts(evals) {
+  const items = state.docs.filter(d => ["hit", "review"].includes(evals[d.id].verdict))
+    .sort((a, b) => (state.reviews[a.id] ? 1 : 0) - (state.reviews[b.id] ? 1 : 0) || b.receivedAt.localeCompare(a.receivedAt));
+  $("#alertList").innerHTML = items.length ? items.map(d => { const e = evals[d.id]; const hits = e.queries.flatMap(q => q.matches.filter(m => m.score >= T_REVIEW).map(m => `${q.q} → ${m.entry.name} (${fs(m.score)})`)); return `<li>
+    <button type="button" class="alert-item ${e.verdict} ${state.reviews[d.id] ? "acked" : ""}" data-doc="${esc(d.id)}">
+      <span class="row1" style="display:flex;justify-content:space-between;gap:8px"><b style="font-size:13px">${esc(d.title)}</b><span class="pill ${e.verdict}">${VERDICT[e.verdict].pill}</span></span>
+      <span class="note">${esc(d.dept)} · ${esc(d.no)} · ${state.reviews[d.id] ? "검토 완료" : "미확인"}</span>
+      <span style="font-size:12px">${hits.map(esc).join("<br>")}</span>
+    </button></li>`; }).join("") : `<li class="note" style="padding:8px">위험 알림이 없습니다.</li>`;
+}
+function checkNewAlerts(evals) {
+  for (const d of state.docs) {
+    const e = evals[d.id];
+    const key = d.id + ":" + e.verdict + ":" + e.queries.map(q => q.q).join("|");
+    if (["hit", "review"].includes(e.verdict) && !state.reviews[d.id] && !seenAlerts.has(key)) {
+      seenAlerts.add(key);
+      if (booted) {
+        const m = e.queries.flatMap(q => q.matches.filter(x => x.score >= T_REVIEW).map(x => `${q.q} → ${x.entry.name} ${fs(x.score)}`))[0] || "";
+        toast(e.verdict, e.verdict === "hit" ? `WL 일치 · ${d.title}` : `유사 명칭 · ${d.title}`, `${d.dept} · ${m}`);
+      }
+    }
+  }
+}
+async function resolveNames() {
+  if (!user) return;
+  const els = [...document.querySelectorAll("[data-uid]")].filter(el => el.dataset.uid);
+  if (!els.length) return;
+  try {
+    const ps = await user.profiles([...new Set(els.map(el => el.dataset.uid))]);
+    els.forEach(el => { const p = ps[el.dataset.uid]; el.textContent = (p && p.isMe) ? "나" : (p && p.name) || "담당자"; });
+  } catch { els.forEach(el => { el.textContent = "담당자"; }); }
+}
+function renderHistory() {
+  const rows = Object.values(state.reviews).sort((a, b) => b.at.localeCompare(a.at));
+  $("#histNote").textContent = db ? "팀 공유 저장소 · 실시간 반영" : "이 브라우저 세션에만 남습니다";
+  $("#histTbl").innerHTML = `<tr><th>판정 시각</th><th>문서번호</th><th>제목</th><th>확정 업체명</th><th>확정 대표자</th><th>자동 판정</th><th>담당자 판정</th><th>추출</th><th>검토자</th><th>의견</th></tr>` +
+    (rows.length ? rows.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td class="mono">${esc(r.no)}</td><td>${esc(r.title)}</td><td>${esc(r.company)}</td><td>${esc((r.ceos || []).join(", "))}</td>
+      <td><span class="pill ${esc(r.verdict)}">${esc(VERDICT[r.verdict]?.pill || r.verdict)}</span> <span class="num">${fs(Number(r.top || 0))}</span></td>
+      <td class="${r.decision === "hold" ? "bad" : "ok"}">${r.decision === "hold" ? "거래 보류 · 보고" : "이상 없음"}</td>
+      <td>${r.engine === "ai" ? "Claude" : r.engine === "manual" ? "수기 확정" : "규칙"}</td>
+      <td><span data-uid="${esc(r.by || "")}">${r.by ? "…" : "이 브라우저"}</span></td><td>${esc(r.memo || "")}</td></tr>`).join("")
+      : `<tr><td colspan="10" class="note">아직 판정 기록이 없습니다. 스크리닝 탭에서 품의서를 열고 '이상 없음 확인' 또는 '거래 보류 · 보고'를 누르면 여기에 남습니다.</td></tr>`);
+  resolveNames();
+}
+function renderWl() {
+  $("#wlTbl").innerHTML = `<tr><th>WL ID</th><th>구분</th><th>등재명</th><th>별칭</th><th>리스트</th><th>등재 사유</th></tr>` +
+    WL.map(e => `<tr><td class="mono">${e.id}</td><td>${e.type}</td><td><b>${esc(e.name)}</b></td><td>${esc(e.aliases.join(", "))}</td><td>${esc(e.list)}</td><td>${esc(e.reason)}</td></tr>`).join("");
+}
+
+/* ---------- 정확도 검증세트 ---------- */
+const POOL = [
+  ["주식회사 한결에프엠", "김도윤"], ["㈜새벽정보통신", "이서연"], ["누리보안시스템 주식회사", "박지후"], ["다온물류(주)", "최민서"],
+  ["청솔건설 주식회사", "정우진"], ["해밀컨설팅", "한예린"], ["㈜온새미로디자인", "오준혁"], ["가람인쇄", "윤서아"],
+  ["비채소프트 주식회사", "강하준"], ["라온시큐리티(주)", "서지민"], ["주식회사 미르테크", "임도현"], ["아라에너지", "송유진"],
+  ["주식회사 별하랩스", "조은우"], ["나래통상(주)", "백승민"], ["㈜단비푸드", "문채원"], ["하늬바람여행사", "장시우"],
+  ["주식회사 너울미디어", "권나연"], ["도담엔지니어링 주식회사", "황지성"], ["㈜이음데이터", "남궁현"], ["모아리서치", "배수빈"],
+  ["주식회사 그루터기", "안태윤"], ["슬기교육(주)", "류하은"], ["㈜푸른숲조경", "전민혁"], ["한빛렌탈 주식회사", "고다인"]
+];
+const TPL = [
+  (c, p) => `제 목 : 용역 계약 체결의 건\n\n1. 계약 개요\n  가. 계약상대방 : ${c} (대표이사 ${p})\n  나. 계약기간 : 1년\n  다. 기안자 : 총무부 정민재 과장`,
+  (c, p) => `2. 업체 현황\n  | 상    호 | ${c} |\n  | 대 표 자 | ${p} |\n  | 소 재 지 | 서울특별시 중구 |`,
+  (c, p) => `기안부서 : 디지털전략부  기안자 : 이수진 대리\n\n  - 업체명 : ${c}\n  - 대표자명 : ${p}\n  - 계약금액 : ₩120,000,000`,
+  (c, p) => `  당행은 영업점 환경 개선을 위하여 ${c}(대표 ${p})와 아래와 같이 계약을 체결하고자 합니다.`,
+  (c, p) => `1. 개요\n  본 건 수급인은 ${c}이며, 동사의 대표자는 ${p}임.\n  결재 : 부장 김태호`,
+  (c, p) => `3. 거래처 정보\n  - ${c} / ${p} 대표\n  - 사업자번호 105-86-XXXXX\n  - 담당 : 박소연 차장`,
+  (c, p) => `2. 공급자 : ${c}\n   대 표 : ${p}\n3. 납품기한 : 2026.12.31`,
+  (c, p, oc, op) => `1. 배경\n  기존 업체 ${oc}(대표 ${op})와의 계약이 2026.12.31 만료됨에 따라, 입찰을 거쳐 신규 업체 ${c}(대표 ${p})와 계약을 체결하고자 합니다.`
+];
+const EVAL = POOL.map(([c, p], i) => { const t = i % TPL.length; const [oc, op] = POOL[(i + 5) % POOL.length]; return { id: "e" + (i + 1), tpl: t + 1, company: c, ceos: [p], text: TPL[t](c, p, oc, op) }; });
+function scoreEval(pred, gold) {
+  const coOk = norm(pred.company) === norm(gold.company);
+  const ceoOk = [...(pred.ceos || [])].map(norm).sort().join() === gold.ceos.map(norm).sort().join();
+  return { coOk, ceoOk };
+}
+function runRuleEval() {
+  let ok = 0;
+  const rows = EVAL.map(g => { const p = ruleExtract(g.text); const s = scoreEval(p, g); ok += s.coOk + s.ceoOk; return { g, p, s }; });
+  state.ruleAcc = ok / (EVAL.length * 2);
+  state.ruleRows = rows;
+}
+function renderEval() {
+  const r = state.ruleAcc;
+  $("#gRule").textContent = (r * 100).toFixed(1) + "%";
+  $("#gRuleBar").style.width = (r * 100).toFixed(1) + "%";
+  $("#gRuleS").textContent = `${Math.round(r * 48)} / 48 필드 정답 · ${r >= 0.95 ? "목표 달성" : "목표 미달"}`;
+  if (state.aiAcc != null) {
+    const a = state.aiAcc;
+    $("#gAi").textContent = (a * 100).toFixed(1) + "%";
+    $("#gAiBar").style.width = (a * 100).toFixed(1) + "%";
+    $("#gAiS").textContent = `${Math.round(a * 48)} / 48 필드 정답 · ${a >= 0.95 ? "목표 달성" : "목표 미달"}`;
+  }
+  const aiMap = Object.fromEntries((state.aiEvalRows || []).map(x => [x.id, x]));
+  const cell = (ok, txt) => `<td class="${ok ? "ok" : "bad"}">${esc(txt || "–")}</td>`;
+  $("#evalTbl").innerHTML = `<tr><th>#</th><th>형식</th><th>정답 업체명</th><th>정답 대표자</th><th>규칙 · 업체명</th><th>규칙 · 대표자</th><th>Claude · 업체명</th><th>Claude · 대표자</th></tr>` +
+    state.ruleRows.map(({ g, p, s }) => { const a = aiMap[g.id]; const as = a ? scoreEval(a, g) : null; return `<tr>
+      <td class="mono">${g.id}</td><td>${["라벨+괄호", "표", "목록", "문장", "서술형", "슬래시", "라벨", "기존/신규 함정"][g.tpl - 1]}</td>
+      <td>${esc(g.company)}</td><td>${esc(g.ceos.join(", "))}</td>
+      ${cell(s.coOk, p.company)}${cell(s.ceoOk, p.ceos.join(", "))}
+      ${a ? cell(as.coOk, a.company) + cell(as.ceoOk, (a.ceos || []).join(", ")) : `<td class="note">–</td><td class="note">–</td>`}</tr>`; }).join("");
+}
+async function runAiEval() {
+  const btn = $("#evalAiBtn");
+  if (!sample) return;
+  btn.disabled = true; btn.textContent = "Claude 측정 중… (최대 1~2분)";
+  $("#gAiS").textContent = "24건을 한 번에 보내 분석하고 있습니다.";
+  try {
+    const prompt = `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다. 아래 품의서 발췌 각각에서 이번 계약 상대방(계약업체)의 상호와 대표자 성명을 추출하세요.
+규칙: 원문 문자열을 그대로 복사, 기안자·결재자·당행 직원·계약이 끝나는 기존 업체는 제외, 공동대표는 모두 포함.
+JSON 배열 하나만 답하세요: [{"id": string, "company": string|null, "ceos": string[]}]
+
+${EVAL.map(g => `<doc id="${g.id}">\n${g.text}\n</doc>`).join("\n\n")}`;
+    const out = await sample.json(prompt, { modelTier: "default" });
+    aiConsented = true; setAiChip();
+    const rows = Array.isArray(out) ? out : (out && out.results) || [];
+    state.aiEvalRows = rows;
+    let ok = 0;
+    for (const g of EVAL) { const a = rows.find(x => x.id === g.id) || { company: null, ceos: [] }; const s = scoreEval(a, g); ok += s.coOk + s.ceoOk; }
+    state.aiAcc = ok / (EVAL.length * 2);
+    renderEval(); render();
+  } catch (e) {
+    $("#gAiS").textContent = sampleErr(e);
+  } finally {
+    btn.disabled = false; btn.textContent = "Claude로 검증세트 다시 실행";
+  }
+}
+function sampleErr(e) {
+  const c = e && e.code;
+  if (c === "not_granted") return "Claude 사용이 허용되지 않아 규칙 기반 추출을 유지합니다.";
+  if (c === "rate_limited") return "요청이 많아 잠시 후 다시 시도하세요.";
+  if (c === "cancelled") return "중단했습니다.";
+  return "Claude 응답을 처리하지 못했습니다. 다시 시도하거나 값을 직접 확정하세요.";
+}
+
+/* ---------- 동작 ---------- */
+async function aiExtract(docId, quiet) {
+  const d = state.docs.find(x => x.id === docId);
+  if (!sample || !d || state.aiBusy[docId]) return;
+  state.aiBusy[docId] = true; render();
+  try {
+    const r = await sample.json(aiPrompt(d.text), { modelTier: "default" });
+    aiConsented = true; setAiChip();
+    const ext = { company: r && r.company ? String(r.company).trim() : null, ceos: Array.isArray(r && r.ceos) ? r.ceos.map(s => String(s).trim()).filter(Boolean) : [], evidence: r && r.evidence ? String(r.evidence).slice(0, 300) : "", confidence: typeof (r && r.confidence) === "number" ? r.confidence : null, engine: "ai", at: new Date().toISOString() };
+    state.aiExt[docId] = ext;
+    delete state.ext[docId];
+    if (db) db.collection("extractions").doc(docId).set(ext).catch(() => {});
+  } catch (e) {
+    if (!quiet) toast("info", "AI 추출 실패", sampleErr(e));
+  } finally {
+    delete state.aiBusy[docId]; render();
+  }
+}
+function applyManual() {
+  const d = state.docs.find(x => x.id === state.selected);
+  const company = $("#fCo").value.trim() || null;
+  const ceos = [...document.querySelectorAll("[data-ceo]")].map(i => i.value.trim()).filter(Boolean);
+  const prev = extractionFor(d);
+  state.ext[d.id] = { company, ceos, engine: "manual", evidence: prev.evidence || "", confidence: null };
+  render();
+}
+async function saveReview(decision) {
+  const d = state.docs.find(x => x.id === state.selected);
+  const e = evaluate(d);
+  const rv = { docId: d.id, no: d.no, title: d.title, dept: d.dept, company: e.x.company || "", ceos: e.x.ceos, engine: e.x.engine, verdict: e.verdict, top: Number(e.top.toFixed(3)), decision, memo: ($("#memo")?.value || "").slice(0, 1000), at: new Date().toISOString(), by: myId || null };
+  state.reviews[d.id] = rv;
+  render();
+  if (db) {
+    try { await db.collection("reviews").doc(d.id).set(rv); toast("info", "판정 저장됨", `${d.no} · 팀 검토 이력에 기록했습니다.`); }
+    catch { toast("info", "공유 저장 실패", "이 브라우저에만 기록했습니다. 권한(Contributor 이상)을 확인하세요."); }
+  }
+}
+async function reopenReview() {
+  const id = state.selected;
+  delete state.reviews[id];
+  render();
+  if (db) db.collection("reviews").doc(id).delete().catch(() => {});
+}
+
+document.addEventListener("click", ev => {
+  const t = ev.target.closest("button"); if (!t) return;
+  if (t.dataset.doc) { state.selected = t.dataset.doc; if (t.classList.contains("alert-item")) { $("#drawer").hidden = true; setTab("screen"); } render(); return; }
+  if (t.dataset.tab) { setTab(t.dataset.tab); return; }
+  switch (t.id) {
+    case "aiBtn": aiExtract(state.selected); break;
+    case "applyBtn": applyManual(); break;
+    case "addCeo": { const d = state.docs.find(x => x.id === state.selected); const x = extractionFor(d); state.ext[d.id] = { ...x, ceos: [...x.ceos, ""].filter((c, i, a) => c || i === a.length - 1), engine: "manual" }; render(); break; }
+    case "okBtn": saveReview("clear"); break;
+    case "holdBtn": saveReview("hold"); break;
+    case "reopenBtn": reopenReview(); break;
+    case "bellBtn": $("#drawer").hidden = !$("#drawer").hidden; break;
+    case "drawerClose": $("#drawer").hidden = true; break;
+    case "newBtn": openNew(); break;
+    case "nCancel": $("#newDlg").close(); break;
+    case "evalAiBtn": runAiEval(); break;
+  }
+});
+function setTab(tab) {
+  state.tab = tab;
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  $("#view-screen").hidden = tab !== "screen";
+  $("#view-eval").hidden = tab !== "eval";
+  $("#view-hist").hidden = tab !== "hist";
+  $("#view-wl").hidden = tab !== "wl";
+  if (tab === "hist") renderHistory();
+  try { localStorage.setItem("wlf.tab", tab); } catch {}
+}
+function openNew() {
+  $("#newForm").reset();
+  $("#nHint").textContent = sample ? "등록하면 Claude가 업체명·대표자명을 추출하고 바로 WLF 조회를 실행합니다." : "Claude 연결이 없어 규칙 기반으로 추출합니다.";
+  $("#newDlg").showModal();
+}
+$("#nFile").addEventListener("change", async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  try { $("#nBody").value = await f.text(); if (!$("#nTitle").value) $("#nTitle").value = f.name.replace(/\.[^.]+$/, ""); } catch {}
+});
+$("#newForm").addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const now = new Date();
+  const pad = n => String(n).padStart(2, "0");
+  const doc = { id: "u" + now.getTime().toString(36) + Math.random().toString(36).slice(2, 6), no: `포털-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`,
+    title: $("#nTitle").value.trim().slice(0, 120), dept: $("#nDept").value.trim().slice(0, 40), text: $("#nBody").value.slice(0, 20000), receivedAt: now.toISOString().slice(0, 19), by: myId || null };
+  $("#newDlg").close();
+  mine.add(doc.id);
+  state.docs.push(doc); state.selected = doc.id; setTab("screen"); render();
+  if (db) db.collection("inbox").doc(doc.id).set(doc).catch(() => toast("info", "공유 저장 실패", "이 품의서는 이 브라우저에만 있습니다."));
+  if (sample) aiExtract(doc.id);
+});
+const mine = new Set();
+
+function setAiChip() {
+  $("#dotAi").classList.toggle("on", !!sample);
+  $("#txtAi").textContent = sample ? (aiConsented ? "Claude AI 추출 사용 중" : "Claude AI 추출 가능") : "규칙 기반 추출 (AI 미연결)";
+}
+function setDbChip() {
+  $("#dotDb").classList.toggle("on", !!db);
+  $("#txtDb").textContent = db ? "팀 공유 저장소 연결됨" : "이 브라우저에만 기록";
+}
+
+/* ---------- 부팅 ---------- */
+let booted = false;
+try { const t = localStorage.getItem("wlf.tab"); if (t) state.tab = t; } catch {}
+runRuleEval(); renderEval(); renderWl();
+render(); setTab(state.tab); booted = true;
+
+(async () => {
+  const c = window.claude;
+  if (!c || !c.use) { setAiChip(); setDbChip(); return; }
+  const [s, d, u] = await Promise.all([c.use("sample").catch(() => null), c.use("db").catch(() => null), c.use("user").catch(() => null)]);
+  sample = s; db = d; user = u;
+  setAiChip(); setDbChip();
+  if (user) { try { myId = await user.id(); } catch {} }
+  render();
+  if (!db) return;
+  db.collection("inbox").onSnapshot(snap => {
+    for (const ds of snap.docs) {
+      const v = ds.data(); if (!v || !v.id || !v.text) continue;
+      if (!state.docs.some(x => x.id === v.id)) {
+        state.docs.push({ id: String(v.id), no: String(v.no || ""), title: String(v.title || "제목 없음"), dept: String(v.dept || ""), receivedAt: String(v.receivedAt || ""), text: String(v.text) });
+        if (bootSnapInbox && !mine.has(v.id)) toast("info", "새 품의서 수신", `${v.dept} · ${v.title}`);
+      }
+    }
+    bootSnapInbox = true; render();
+  }, () => {});
+  db.collection("extractions").onSnapshot(snap => {
+    for (const ds of snap.docs) { const v = ds.data(); if (v && v.engine === "ai") state.aiExt[ds.id] = { company: v.company ?? null, ceos: Array.isArray(v.ceos) ? v.ceos.map(String) : [], evidence: String(v.evidence || ""), confidence: typeof v.confidence === "number" ? v.confidence : null, engine: "ai" }; }
+    render();
+  }, () => {});
+  db.collection("reviews").onSnapshot(snap => {
+    const next = {};
+    for (const ds of snap.docs) { const v = ds.data(); if (v && v.decision) next[ds.id] = { ...v, at: String(v.at || ""), ceos: Array.isArray(v.ceos) ? v.ceos.map(String) : [] }; }
+    state.reviews = next; render();
+  }, () => {});
+})();
+let bootSnapInbox = false;
+</script>
