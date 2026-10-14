@@ -6,14 +6,18 @@
 /* Layout: operations console. Top bar + KPI strip, then a three-pane workbench:
    inbox (portal 수신함) | 품의서 원문 (paper, serif) | 추출·WLF 판정 panel. */
 :root {
-  --bg: #eef1f4;
+  --bg: #f2f5f8;
   --surface: #ffffff;
-  --paper: #fdfdfb;
-  --ink: #17212b;
-  --muted: #5b6875;
-  --line: #d5dce3;
-  --accent: #0d5c63;
-  --accent-soft: #dcecec;
+  --paper: #fffefb;
+  --ink: #14202b;
+  --muted: #5f6f7e;
+  --line: #e1e7ed;
+  --accent: #0b6e74;
+  --accent-soft: #e1f1f0;
+  --head-bg: #0c3a42;
+  --head-fg: #eaf6f5;
+  --head-muted: #9fc3c4;
+  --radius: 14px;
   --hit: #b3261e;
   --hit-soft: #fbe3e0;
   --warn: #9a6200;
@@ -22,27 +26,32 @@
   --ok-soft: #dff0e3;
   --mark-co: #cfe6f5;
   --mark-ceo: #f6e2b8;
-  --shadow: 0 1px 2px rgba(23,33,43,.06), 0 4px 16px rgba(23,33,43,.06);
+  --shadow: 0 1px 2px rgba(16,32,48,.05), 0 8px 24px rgba(16,32,48,.07);
+  --shadow-sm: 0 1px 2px rgba(16,32,48,.06), 0 2px 8px rgba(16,32,48,.04);
   --f-ui: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --f-doc: "Noto Serif KR", "AppleMyungjo", "Batang", serif;
   --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #11171d; --surface: #182029; --paper: #1d2630; --ink: #e4e9ee; --muted: #93a1ae;
-    --line: #2c3743; --accent: #5cbcc3; --accent-soft: #163a3e;
+    --bg: #0e1419; --surface: #151d24; --paper: #1a232b; --ink: #e4ebf0; --muted: #93a3b1;
+    --line: #26313b; --accent: #5cc3c6; --accent-soft: #143a3d;
+    --head-bg: #0a2a30; --head-fg: #e4f3f2; --head-muted: #8fb5b6;
     --hit: #ff8a7f; --hit-soft: #43201d; --warn: #f0b54c; --warn-soft: #3d2f12;
     --ok: #74cf92; --ok-soft: #173723; --mark-co: #1d4460; --mark-ceo: #5a4415;
-    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+    --shadow: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.3);
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
-  --bg: #11171d; --surface: #182029; --paper: #1d2630; --ink: #e4e9ee; --muted: #93a1ae;
-  --line: #2c3743; --accent: #5cbcc3; --accent-soft: #163a3e;
+  --bg: #0e1419; --surface: #151d24; --paper: #1a232b; --ink: #e4ebf0; --muted: #93a3b1;
+  --line: #26313b; --accent: #5cc3c6; --accent-soft: #143a3d;
+  --head-bg: #0a2a30; --head-fg: #e4f3f2; --head-muted: #8fb5b6;
   --hit: #ff8a7f; --hit-soft: #43201d; --warn: #f0b54c; --warn-soft: #3d2f12;
   --ok: #74cf92; --ok-soft: #173723; --mark-co: #1d4460; --mark-ceo: #5a4415;
-  --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+  --shadow: 0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.3);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -264,6 +273,99 @@ dialog textarea { min-height: 160px; font-family: var(--f-doc); }
 .ctx { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); }
 .chat-warn { font-size: 11px; margin: 0; }
 .example-tag { font-size: 11px; color: var(--warn); font-weight: 600; }
+
+/* ---------- visual refresh: later rules refine the base styles above ---------- */
+body { background: var(--bg); }
+.wrap { padding-block: 0 56px; }
+/* brand bar */
+.top { background: var(--head-bg); border-bottom: 0; box-shadow: 0 2px 12px rgba(8, 30, 36, .18); }
+.top-in { padding: 14px 16px; }
+.seal { background: var(--head-fg); color: var(--head-bg); border-radius: 10px; width: 40px; height: 40px; letter-spacing: -.02em; }
+.brand h1 { color: var(--head-fg); font-size: 18px; letter-spacing: -.01em; }
+.brand p { color: var(--head-muted); }
+.top .chip { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.16); color: var(--head-fg); padding: 5px 12px; }
+.top .chip .dot { background: var(--head-muted); }
+.top .chip .dot.on { background: #6fe0a0; box-shadow: 0 0 0 3px rgba(111,224,160,.18); }
+.top .bell { background: var(--head-fg); color: var(--head-bg); border: 0; border-radius: 10px; padding: 7px 14px; }
+.top .bell .count.zero { background: rgba(12,58,66,.15); color: var(--head-bg); }
+/* KPI cards */
+.kpis { background: none; border: 0; gap: 14px; margin-block: 20px; overflow: visible; }
+.kpi { border-radius: var(--radius); box-shadow: var(--shadow-sm); border: 1px solid var(--line); padding: 16px 18px; position: relative; overflow: hidden; gap: 4px; }
+.kpi::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--accent); opacity: .85; }
+.kpi.alert::before { background: var(--hit); }
+.kpi.good::before { background: var(--ok); }
+.kpi .v { font-size: 30px; letter-spacing: -.02em; }
+.kpi .label { letter-spacing: .04em; }
+/* tabs as segmented control */
+.tabs { border-bottom: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 2px; width: fit-content; max-width: 100%; box-shadow: var(--shadow-sm); margin-bottom: 18px; }
+.tab { border: 0; border-radius: 9px; margin: 0; padding: 8px 16px; transition: background .15s, color .15s; }
+.tab:hover { color: var(--ink); background: var(--bg); }
+.tab[aria-selected="true"] { background: var(--accent); color: var(--surface); }
+/* panes */
+.pane { border-radius: var(--radius); box-shadow: var(--shadow-sm); border-color: var(--line); }
+.pane-h { padding: 14px 16px; }
+.pane-h h2 { font-size: 14.5px; letter-spacing: -.01em; }
+.bench { gap: 18px; }
+/* inbox with status stripe */
+.inbox { padding: 8px; gap: 6px; }
+.inbox li button { border-radius: 10px; padding: 11px 12px 11px 14px; position: relative; border: 1px solid transparent; transition: background .15s, border-color .15s; }
+.inbox li button::before { content: ""; position: absolute; left: 4px; top: 12px; bottom: 12px; width: 3px; border-radius: 2px; background: var(--line); }
+.inbox li button.v-hit::before, .inbox li button.v-blocked::before { background: var(--hit); }
+.inbox li button.v-review::before { background: var(--warn); }
+.inbox li button.v-clear::before { background: var(--ok); }
+.inbox li button.v-done::before { background: var(--muted); }
+.inbox li button:hover { background: var(--bg); }
+.inbox li button[aria-current="true"] { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+/* pills */
+.pill { border-radius: 999px; padding: 3px 9px; font-size: 11px; }
+.pill.hit::before, .pill.review::before, .pill.clear::before, .pill.blocked::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.pill.blocked { outline: 0; box-shadow: inset 0 0 0 1px var(--hit); }
+/* buttons */
+.btn { border-radius: 9px; padding: 8px 14px; transition: background .15s, border-color .15s, transform .05s; }
+.btn:active { transform: translateY(1px); }
+.btn.primary:hover { background: color-mix(in srgb, var(--accent) 88%, black); border-color: color-mix(in srgb, var(--accent) 88%, black); }
+.btn.danger:hover { background: color-mix(in srgb, var(--hit) 88%, black); }
+.btn.sm { padding: 5px 11px; }
+/* pipeline */
+.pipe { gap: 6px; padding: 14px 16px; }
+.step { padding-right: 0; }
+.step .bar { height: 5px; border-radius: 3px; }
+/* paper */
+.paper-wrap { padding: 22px; background: linear-gradient(var(--bg), var(--bg)) padding-box; border-radius: 0 0 var(--radius) var(--radius); }
+.paper { border-radius: 4px; border-color: var(--line); box-shadow: var(--shadow); }
+mark.co, mark.ceo { border-radius: 3px; }
+/* right panel */
+.sec { padding: 16px; gap: 14px; }
+.field input { border-radius: 9px; padding: 9px 12px; transition: border-color .15s, box-shadow .15s; }
+.field input:focus, textarea:focus, dialog input[type="text"]:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+textarea { border-radius: 9px; }
+.banner { border-radius: 10px; padding: 12px 14px; }
+.match { border-radius: 10px; padding: 10px 12px; }
+.meter { height: 5px; border-radius: 3px; }
+.cmp { border-radius: 9px; }
+.reviewed { border-radius: 10px; }
+/* tables */
+table.data th { background: var(--bg); text-transform: none; letter-spacing: .02em; }
+table.data tr:hover td { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); }
+table.data td, table.data th { padding: 10px 14px; }
+/* dialogs, drawer, toasts */
+dialog { border-radius: 18px; border: 0; }
+dialog form { padding: 22px; gap: 14px; }
+dialog input[type="text"], dialog select { border-radius: 9px; padding: 9px 12px; }
+.drop { border-radius: 14px; transition: border-color .15s, background .15s; }
+.drawer { border-left: 0; box-shadow: -8px 0 32px rgba(8, 30, 36, .18); }
+.alert-item { border-radius: 10px; }
+.toast { border-radius: 12px; }
+/* chat */
+.fab { padding: 11px 18px 11px 11px; box-shadow: 0 8px 24px rgba(11, 110, 116, .35); transition: transform .15s; }
+.fab:hover { transform: translateY(-1px); }
+.chat { border-radius: 18px; border: 0; }
+.chat-h { background: var(--head-bg); color: var(--head-fg); border-bottom: 0; padding: 12px 14px; }
+.chat-h .note { color: var(--head-muted); }
+.chat-h .btn { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.18); color: var(--head-fg); }
+.chat-h .btn.ghost { background: none; border-color: transparent; }
+.msg { border-radius: 14px; }
+@media (prefers-reduced-motion: reduce) { .btn, .tab, .fab, .inbox li button { transition: none; } .btn:active, .fab:hover { transform: none; } }
 </style>
 
 <header class="top">
@@ -859,7 +961,7 @@ function statusPill(d, e) {
 }
 function renderInbox(evals) {
   const docs = [...state.docs].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  $("#inbox").innerHTML = docs.map(d => `<li><button type="button" data-doc="${esc(d.id)}" aria-current="${d.id === state.selected}">
+  $("#inbox").innerHTML = docs.map(d => `<li><button type="button" class="v-${state.reviews[d.id] ? "done" : evals[d.id].verdict}" data-doc="${esc(d.id)}" aria-current="${d.id === state.selected}">
     <span class="row1"><span class="no">${esc(d.no)}</span>${statusPill(d, evals[d.id])}</span>
     <span class="t">${esc(d.title)}</span>
     <span class="meta">${esc(d.dept)} · ${fmtTime(d.receivedAt)}${d.example ? ' · <span class="example-tag">예시</span>' : ""}</span>
