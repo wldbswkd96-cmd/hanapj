@@ -59,6 +59,14 @@
 - **양식 받기**는 현재 명단을 같은 머리글의 .xlsx로 내려받습니다. 내려받아 고친 뒤 다시 올리면 됩니다.
 - 저장 위치: 아티팩트에서는 팀 공유 저장소(모든 담당자 화면에 실시간 반영), Vercel에서는 이 브라우저(localStorage)입니다.
 
+## WLF 도우미 (챗봇)
+
+화면 오른쪽 아래 **도우미** 버튼으로 엽니다. 지금 보고 있는 품의서의 추출값·WLF 조회 결과·담당자 판정·본문 앞부분을 함께 보내(체크박스로 끌 수 있음) 판정 근거, 추가 확인할 점, 처리 절차를 묻고 답합니다.
+
+- Vercel: `/api/chat` → OpenRouter. 환경 변수 `OPENROUTER_API_KEY`(필수), `OPENROUTER_MODEL`(선택, 기본 `nvidia/nemotron-3.5-lightning:free`). 다른 무료 Nemotron 예: `nvidia/nemotron-3-super-120b-a12b:free`, `nvidia/nemotron-3-ultra-550b-a55b:free`. `WLF_ACCESS_KEY`를 설정하면 이 엔드포인트도 같은 키로 보호됩니다.
+- 아티팩트: 보는 사람의 Claude로 답합니다.
+- **주의:** OpenRouter의 무료 모델은 제공사가 입력을 기록·학습에 쓸 수 있습니다. 실제 고객·거래 정보를 보낼 계획이면 유료 모델이나 데이터 보존이 없는 제공사로 바꾸세요(OpenRouter 설정의 데이터 정책 참고).
+
 ## 참고
 
 - 예시 품의서·업체·인물과 WL 명단은 모두 **테스트용 가상 데이터**입니다.
