@@ -3,6 +3,7 @@
 //   GET  /api/extract                       -> { ok }   (ANTHROPIC_API_KEY 설정 여부)
 //   POST /api/extract { text }              -> { company, ceos, evidence, confidence }
 //   POST /api/extract { docs: [{id, text}] } -> { results: [{ id, company, ceos }] }
+//   POST /api/extract { images: [base64 jpeg] } -> { text, company, ceos, evidence, confidence }  (스캔본 품의서)
 // 선택: WLF_ACCESS_KEY 를 설정하면 요청 헤더 x-wlf-key 가 일치해야 호출된다.
 import Anthropic from "@anthropic-ai/sdk";
 import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
@@ -18,6 +19,9 @@ const Single = z.object({
   evidence: z.string(),
   confidence: z.number(),
 });
+const Ocr = Single.extend({ text: z.string() });
+const MAX_IMAGES = 5;
+const MAX_IMAGE_B64 = 1_500_000;
 const Batch = z.object({
   results: z.array(z.object({ id: z.string(), company: z.string().nullable(), ceos: z.array(z.string()) })),
 });
@@ -49,6 +53,21 @@ ${RULES}
 ${docs.map((d) => `<doc id="${d.id}">\n${d.text}\n</doc>`).join("\n\n")}`;
 }
 
+function ocrContent(images) {
+  return [
+    ...images.map((data) => ({ type: "image", source: { type: "base64", media_type: "image/jpeg", data } })),
+    {
+      type: "text",
+      text: `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다. 위 이미지는 '계약체결 품의서' 스캔 페이지입니다.
+1) text: 페이지의 글자를 줄바꿈을 살려 원문 그대로 옮겨 적습니다.
+2) 이번 계약의 상대방(계약업체)의 상호(company)와 대표자 성명(ceos)을 추출합니다. 옮겨 적은 text에 있는 문자열을 그대로 씁니다.
+
+${RULES}
+- evidence에는 근거가 된 원문 한 줄을 그대로 넣고, confidence는 0~1 사이 숫자로 답합니다.`,
+    },
+  ];
+}
+
 let client;
 async function ask(prompt, schema) {
   client ??= new Anthropic();
@@ -77,6 +96,12 @@ export default async function handler(req, res) {
 
   const body = typeof req.body === "string" ? safeJson(req.body) : req.body || {};
   try {
+    if (Array.isArray(body.images)) {
+      const images = body.images.slice(0, MAX_IMAGES).filter((b) => typeof b === "string" && b.length > 0);
+      if (!images.length) return res.status(400).json({ error: "bad_request" });
+      if (images.some((b) => b.length > MAX_IMAGE_B64 || !/^[A-Za-z0-9+/=]+$/.test(b))) return res.status(413).json({ error: "too_large" });
+      return res.status(200).json(await ask(ocrContent(images), Ocr));
+    }
     if (Array.isArray(body.docs)) {
       const docs = body.docs.slice(0, MAX_DOCS).map((d) => ({ id: String(d.id).slice(0, 40), text: String(d.text || "").slice(0, MAX_TEXT) }));
       if (!docs.length) return res.status(400).json({ error: "bad_request" });
