@@ -133,6 +133,7 @@ h1, h2, h3 { text-wrap: balance; margin: 0; }
 .paper-wrap { padding: 18px; }
 .paper { background: var(--paper); border: 1px solid var(--line); box-shadow: var(--shadow); padding: 32px 36px; font-family: var(--f-doc); font-size: 14.5px; line-height: 1.85; white-space: pre-wrap; word-break: keep-all; overflow-wrap: anywhere; max-width: 72ch; margin: 0 auto; }
 @media (max-width: 560px) { .paper { padding: 20px 16px; font-size: 13.5px; } .paper-wrap { padding: 10px; } }
+.sec-h { display: block; margin-block: 8px 2px; padding: 4px 10px; border-radius: 4px; background: var(--accent-soft); color: var(--accent); font-family: var(--f-ui); font-size: 12px; font-weight: 700; white-space: normal; }
 mark.co { background: var(--mark-co); color: inherit; padding: 0 2px; border-radius: 2px; box-shadow: inset 0 -2px 0 var(--accent); }
 mark.ceo { background: var(--mark-ceo); color: inherit; padding: 0 2px; border-radius: 2px; box-shadow: inset 0 -2px 0 var(--warn); }
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding: 0 18px 14px; }
@@ -218,6 +219,14 @@ dialog textarea { min-height: 160px; font-family: var(--f-doc); }
 .drop-ic { width: 44px; height: 52px; border-radius: 6px; background: var(--accent); color: var(--surface); display: grid; place-items: center; font-family: var(--f-mono); font-size: 12px; font-weight: 600; flex: none; }
 .drop-txt { display: grid; gap: 2px; flex: 1; min-width: 200px; }
 .drop-txt b { font-size: 14px; overflow-wrap: anywhere; }
+.drop-ic { text-align: center; line-height: 1.25; }
+.flist { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 8px; max-height: 220px; overflow-y: auto; }
+.flist li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+.flist li:last-child { border-bottom: 0; }
+.flist .fn { overflow-wrap: anywhere; font-weight: 600; }
+.flist .fi { grid-column: 2 / -1; font-size: 12px; color: var(--muted); }
+.flist .fi.bad { color: var(--hit); }
+.flist label { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--muted); font-weight: 600; white-space: nowrap; }
 .opt { border: 1px solid var(--line); border-radius: 8px; }
 .opt summary { cursor: pointer; padding: 10px 12px; font-size: 13px; font-weight: 600; }
 .opt-body { display: grid; gap: 10px; padding: 0 12px 12px; }
@@ -368,14 +377,15 @@ dialog textarea { min-height: 160px; font-family: var(--f-doc); }
   <form id="newForm" method="dialog">
     <h2 style="font-size:16px">품의서 등록</h2>
     <div class="drop" id="nDrop">
-      <input type="file" id="nFile" accept=".pdf,application/pdf,.txt,text/plain" hidden>
-      <div class="drop-ic" aria-hidden="true">PDF</div>
+      <input type="file" id="nFile" accept=".pdf,application/pdf,.zip,application/zip,.txt,text/plain,.docx,.hwpx,.jpg,.jpeg,.png" multiple hidden>
+      <div class="drop-ic" aria-hidden="true">PDF<br>ZIP</div>
       <div class="drop-txt">
-        <b id="nFileName">품의서 PDF를 끌어다 놓거나 선택하세요</b>
-        <span class="note" id="nFileInfo">포털에서 받은 PDF를 그대로 올리면 본문을 읽어 바로 스크리닝합니다. 스캔본은 Claude가 페이지를 읽습니다.</span>
+        <b id="nFileName">품의서 PDF나 첨부가 든 압축파일(.zip)을 끌어다 놓으세요</b>
+        <span class="note" id="nFileInfo">품의서와 첨부(사업자등록증, 등기부 등)를 여러 개 한꺼번에 올려도 됩니다. 업체명은 품의서에서, 대표자명은 첨부에서 찾습니다.</span>
       </div>
       <button class="btn sm" type="button" id="nPick">파일 선택</button>
     </div>
+    <ul class="flist" id="nList" hidden></ul>
     <details class="opt" id="nOpt">
       <summary>선택 입력 · 제목, 기안부서, 본문 <span class="note">(비워 두면 PDF에서 자동으로 채웁니다)</span></summary>
       <div class="opt-body">
@@ -612,13 +622,15 @@ function ruleExtract(text) {
 function aiPrompt(text) {
   return `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다.
 아래 '계약체결 품의서'에서 이번 계약의 상대방(계약업체)의 상호와 대표자 성명을 추출하세요.
+'════ [첨부 n] 파일명 ════' 줄 아래는 품의서에 딸린 첨부 서류(사업자등록증, 법인 등기사항증명서, 견적서 등)입니다.
 
 규칙:
 - 원문에 적힌 문자열을 그대로 복사합니다. 철자, 띄어쓰기, 법인격 표기((주), 주식회사, ㈜)를 바꾸지 마세요.
 - 기안자, 결재자, 당행 직원, 계약이 끝나는 기존 업체는 제외합니다. 이번에 계약하는 업체만 추출합니다.
+- 업체명은 품의서 본문을 우선합니다. 대표자가 품의서에 없으면 첨부 서류에서 찾되, 반드시 그 계약업체의 대표자여야 합니다(첨부 서류의 상호가 계약업체와 같은지 확인).
 - 공동대표이면 모두 넣습니다.
 - 찾을 수 없으면 company는 null, ceos는 빈 배열입니다.
-- evidence에는 근거가 된 원문 한 줄을 그대로 넣습니다.
+- evidence에는 근거가 된 원문 줄을 그대로 넣습니다. 업체명과 대표자의 근거가 다른 곳이면 두 줄을 " / "로 잇습니다.
 
 JSON 객체 하나만 답하세요. 다른 글은 쓰지 마세요.
 {"company": string|null, "ceos": string[], "evidence": string, "confidence": 0~1 사이 숫자}
@@ -697,6 +709,17 @@ function evaluate(doc) {
   else if (!coOk) issues.push("계약업체명이 원문과 글자 단위로 일치하지 않습니다.");
   if (!x.ceos.length) issues.push("대표자명을 찾지 못했습니다.");
   ceoOk.forEach((ok, i) => { if (!ok) issues.push(`대표자명 '${x.ceos[i]}'이 원문에 없습니다.`); });
+  // 대표자가 품의서 본문이 아닌 첨부에서 왔다면, 그 첨부에 계약업체명이 함께 있어야 같은 회사의 대표자로 본다
+  const secs = sectionsOf(doc.text);
+  const ceoSrc = x.ceos.map(c => {
+    const hit = secs.filter(sc => sc.body.includes(c));
+    if (!hit.length) return null;
+    const main = hit.find(sc => sc.main);
+    if (main) return { label: secs.length > 1 ? "품의서" : "", same: true };
+    const same = !!x.company && hit.some(sc => norm(sc.body).includes(norm(x.company)));
+    return { label: hit[0].label, same };
+  });
+  ceoSrc.forEach((src, i) => { if (src && !src.same) issues.push(`대표자명 '${x.ceos[i]}'의 출처(${src.label})에 계약업체명이 없어 같은 회사인지 확인이 필요합니다.`); });
   // 교차검증: AI 결과와 규칙 결과가 다르면 담당자 확인 필요 (단, 수기 확정값은 제외)
   let crossDiff = false;
   if (x.engine === "ai" && x.rule) {
@@ -711,7 +734,19 @@ function evaluate(doc) {
   let verdict = levelOf(top);
   const blocked = issues.length > 0;
   if (blocked && verdict === "clear") verdict = "blocked";
-  return { x, issues, coOk, ceoOk, crossDiff, queries, top, verdict, blocked };
+  return { x, issues, coOk, ceoOk, ceoSrc, crossDiff, queries, top, verdict, blocked };
+}
+// 묶음 등록(품의서 + 첨부)의 본문은 '════ [품의서|첨부 n] 파일명 ════' 줄로 나뉜다
+const SEC_RE = /^════ \[(품의서|첨부 \d+)\] (.*) ════$/;
+function sectionsOf(text) {
+  const out = []; let cur = { label: "본문", main: true, body: "" };
+  for (const line of String(text).split("\n")) {
+    const m = line.match(SEC_RE);
+    if (m) { if (cur.body.trim() || out.length) out.push(cur); cur = { label: m[1] === "품의서" ? "품의서" : `${m[1]} ${m[2]}`, main: m[1] === "품의서", body: "" }; }
+    else cur.body += line + "\n";
+  }
+  out.push(cur);
+  return out.filter(sc => sc.body.trim() || sc.main);
 }
 const VERDICT = {
   hit: { pill: "WL 일치", title: "요주의 리스트 일치", sub: "거래를 보류하고 담당자 확인 후 보고 절차를 진행하세요." },
@@ -731,7 +766,9 @@ function highlight(text, co, ceos) {
   ranges.sort((a, b) => a[0] - b[0] || b[1] - a[1]);
   let out = "", pos = 0;
   for (const [s, e, cls] of ranges) { if (s < pos) continue; out += esc(text.slice(pos, s)) + `<mark class="${cls}">${esc(text.slice(s, e))}</mark>`; pos = e; }
-  return out + esc(text.slice(pos));
+  out += esc(text.slice(pos));
+  // 묶음 등록의 구분선(품의서/첨부)은 제목줄로 보이게
+  return out.replace(/^════ \[(품의서|첨부 \d+)\] (.*) ════$/gm, '<span class="sec-h">$1 · $2</span>');
 }
 function toast(kind, title, body) {
   const el = document.createElement("div");
@@ -809,7 +846,7 @@ function renderDoc(evals) {
   $("#engPill").innerHTML = `<span class="pill run">${engLabel}</span>`;
   const ceoRows = (x.ceos.length ? x.ceos : [""]).map((c, i) => `<div class="field-row">
       <input id="fCeo${i}" data-ceo="${i}" value="${esc(c)}" aria-label="대표자명 ${i + 1}">
-      ${c ? `<span class="vchk ${e.ceoOk[i] ? "ok" : "bad"}">${e.ceoOk[i] ? "원문 일치" : "원문 없음"}</span>` : ""}
+      ${c ? `<span class="vchk ${e.ceoOk[i] && (!e.ceoSrc[i] || e.ceoSrc[i].same) ? "ok" : "bad"}" title="${esc(e.ceoSrc[i]?.label || "")}">${!e.ceoOk[i] ? "원문 없음" : e.ceoSrc[i] && e.ceoSrc[i].label.startsWith("첨부") ? (e.ceoSrc[i].same ? "첨부 일치" : "첨부 · 업체 불일치") : "원문 일치"}</span>` : ""}
     </div>`).join("");
   let cmp = "";
   if (x.ai || x.engine === "manual") {
@@ -1285,30 +1322,38 @@ function setTab(tab) {
 function openNew() {
   $("#newForm").reset();
   $("#nOpt").open = false;
-  nPdf = null; setDrop();
+  nFiles = []; nMain = 0; nZipName = ""; $("#nList").hidden = true; $("#nList").innerHTML = ""; setDrop();
   $("#nHint").className = "note";
   $("#nHint").textContent = ai ? "등록하면 Claude가 업체명·대표자명을 추출하고 바로 WLF 조회를 실행합니다." : "Claude 연결이 없어 규칙 기반으로 추출합니다. 스캔본 PDF는 읽을 수 없습니다.";
   $("#nSubmit").disabled = false; $("#nSubmit").textContent = "등록하고 스크리닝";
   $("#newDlg").showModal();
 }
 
-/* ---------- 품의서 PDF 읽기 ---------- */
-// nPdf: { name, text, pages, title, dept, no, scanned, images? }
-let nPdf = null, nBusy = false;
-let pdfLoading = null;
-function loadPdfJs() {
-  if (window.pdfjsLib && window.pdfjsWorker) return Promise.resolve(window.pdfjsLib);
-  const add = src => new Promise((ok, fail) => { const sc = document.createElement("script"); sc.src = src; sc.onload = ok; sc.onerror = fail; document.head.append(sc); });
-  // 워커를 별도 스크립트로 먼저 올려 두면 pdf.js가 같은 스레드에서 처리한다 (외부 워커 URL 불필요)
-  pdfLoading ??= add("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js")
-    .then(() => add("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"))
-    .then(() => window.pdfjsLib)
-    .catch(e => { pdfLoading = null; throw e; });
-  return pdfLoading;
+/* ---------- 품의서 · 첨부 파일 읽기 ---------- */
+// nFiles: [{ name, kind, text, pages, scanned, images, error }], nMain: 품의서로 쓸 파일 번호
+let nFiles = [], nMain = 0, nBusy = false, nZipName = "";
+const loaded = {};
+function loadScript(src) {
+  loaded[src] ??= new Promise((ok, fail) => { const sc = document.createElement("script"); sc.src = src; sc.onload = ok; sc.onerror = () => { delete loaded[src]; fail(new Error(src)); }; document.head.append(sc); });
+  return loaded[src];
 }
-async function readPdf(file) {
+async function loadPdfJs() {
+  // 워커를 별도 스크립트로 먼저 올려 두면 pdf.js가 같은 스레드에서 처리한다 (외부 워커 URL 불필요)
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js");
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js");
+  return window.pdfjsLib;
+}
+async function loadZip() {
+  await loadScript("https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
+  return window.JSZip;
+}
+// Windows에서 만든 압축파일은 한글 파일명이 CP949라 UTF-8로 안 읽히면 EUC-KR로 다시 읽는다
+function decodeName(bytes) {
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(bytes); } catch { return new TextDecoder("euc-kr").decode(bytes); }
+}
+async function readPdfData(name, data) {
   const lib = await loadPdfJs();
-  const pdf = await lib.getDocument({ data: new Uint8Array(await file.arrayBuffer()), isEvalSupported: false }).promise;
+  const pdf = await lib.getDocument({ data, isEvalSupported: false }).promise;
   const lines = [];
   for (let n = 1; n <= pdf.numPages; n++) {
     const page = await pdf.getPage(n);
@@ -1321,20 +1366,16 @@ async function readPdf(file) {
       if (!rows.has(y)) rows.set(y, []);
       rows.get(y).push({ x: it.transform[4], s: it.str, w: it.width || 0 });
     }
-    const ys = [...rows.keys()].sort((a, b) => b - a);
-    for (const y of ys) {
-      const parts = rows.get(y).sort((a, b) => a.x - b.x);
+    for (const y of [...rows.keys()].sort((a, b) => b - a)) {
       let line = "", endX = null;
-      for (const p of parts) { if (endX != null && p.x - endX > 2) line += " "; line += p.s; endX = p.x + p.w; }
+      for (const p of rows.get(y).sort((a, b) => a.x - b.x)) { if (endX != null && p.x - endX > 2) line += " "; line += p.s; endX = p.x + p.w; }
       lines.push(line.replace(/\s+$/, ""));
     }
     if (n < pdf.numPages) lines.push("");
   }
   const text = lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
   const scanned = text.replace(/\s/g, "").length < 30;
-  let images = null;
-  if (scanned) images = await renderPages(pdf, 5);
-  return { name: file.name, pages: pdf.numPages, text: scanned ? "" : text, scanned, images, ...guessMeta(text) };
+  return { name, kind: "pdf", pages: pdf.numPages, text: scanned ? "" : text, scanned, images: scanned ? await renderPages(pdf, 5) : null };
 }
 async function renderPages(pdf, max) {
   const out = [];
@@ -1350,6 +1391,111 @@ async function renderPages(pdf, max) {
   }
   return out;
 }
+async function imageToJpeg(blob) {
+  const bmp = await createImageBitmap(blob);
+  const k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+  const cv = document.createElement("canvas");
+  cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+  const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+  ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+  return new Promise(ok => cv.toBlob(ok, "image/jpeg", 0.85));
+}
+const xmlText = s => s.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&");
+// .docx / .hwpx 는 내부가 XML 묶음이라 문단 단위로 글자만 뽑는다
+async function readOfficeXml(name, data, kind) {
+  const JSZip = await loadZip();
+  const z = await JSZip.loadAsync(data);
+  const parts = kind === "docx" ? ["word/document.xml"] : Object.keys(z.files).filter(f => /^Contents\/section\d+\.xml$/i.test(f)).sort();
+  let text = "";
+  for (const f of parts) {
+    const xml = await z.file(f)?.async("string");
+    if (!xml) continue;
+    const paraEnd = kind === "docx" ? /<\/w:p>/g : /<\/hp:p>/g;
+    const tRe = kind === "docx" ? /<w:t[^>]*>([\s\S]*?)<\/w:t>/g : /<hp:t[^>]*>([\s\S]*?)<\/hp:t>/g;
+    text += xml.split(paraEnd).map(p => [...p.matchAll(tRe)].map(m => xmlText(m[1])).join("")).join("\n") + "\n";
+  }
+  return { name, kind, pages: 1, text: text.replace(/\n{3,}/g, "\n\n").trim(), scanned: false };
+}
+function kindOf(name) {
+  const ext = (name.match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
+  if (ext === "pdf") return "pdf";
+  if (ext === "zip") return "zip";
+  if (ext === "txt") return "txt";
+  if (ext === "docx") return "docx";
+  if (ext === "hwpx") return "hwpx";
+  if (["jpg", "jpeg", "png"].includes(ext)) return "image";
+  if (ext === "hwp") return "hwp";
+  return "other";
+}
+async function readOne(name, getData) {
+  const kind = kindOf(name);
+  try {
+    if (kind === "pdf") return await readPdfData(name, new Uint8Array(await getData("arraybuffer")));
+    if (kind === "txt") { const buf = await getData("arraybuffer"); return { name, kind, pages: 1, text: decodeName(new Uint8Array(buf)).trim(), scanned: false }; }
+    if (kind === "docx" || kind === "hwpx") return await readOfficeXml(name, await getData("arraybuffer"), kind);
+    if (kind === "image") return { name, kind, pages: 1, text: "", scanned: true, images: [await imageToJpeg(new Blob([await getData("arraybuffer")]))] };
+    if (kind === "hwp") return { name, kind, error: "한글(.hwp) 파일은 읽을 수 없습니다. PDF나 .hwpx로 저장해 올려 주세요." };
+    return { name, kind, error: "지원하지 않는 형식이라 건너뜁니다." };
+  } catch (e) {
+    return { name, kind, error: kind === "pdf" ? "PDF를 읽지 못했습니다(암호가 걸렸거나 손상된 파일)." : "파일을 읽지 못했습니다." };
+  }
+}
+async function takeFiles(list) {
+  const files = [...(list || [])];
+  if (!files.length || nBusy) return;
+  nBusy = true;
+  $("#nFileName").textContent = files.length === 1 ? files[0].name : `${files[0].name} 외 ${files.length - 1}개`;
+  $("#nFileInfo").textContent = "읽는 중…";
+  const out = [];
+  nZipName = "";
+  try {
+    for (const f of files) {
+      if (kindOf(f.name) === "zip") {
+        if (f.size > 50 * 1024 * 1024) { out.push({ name: f.name, kind: "zip", error: "50MB 이하 압축파일만 올릴 수 있습니다." }); continue; }
+        try {
+          const JSZip = await loadZip();
+          const z = await JSZip.loadAsync(await f.arrayBuffer(), { decodeFileName: decodeName });
+          nZipName = nZipName || f.name;
+          const entries = Object.values(z.files).filter(e => !e.dir && !/(^|\/)(__MACOSX|\.)/.test(e.name)).slice(0, 30);
+          for (const e of entries) {
+            const base = e.name.split("/").pop();
+            if (kindOf(base) === "zip") { out.push({ name: base, kind: "zip", error: "압축 안의 압축파일은 풀지 않습니다." }); continue; }
+            $("#nFileInfo").textContent = `읽는 중… ${base}`;
+            out.push(await readOne(base, t => e.async(t)));
+          }
+        } catch { out.push({ name: f.name, kind: "zip", error: "압축파일을 풀지 못했습니다(암호가 걸렸거나 손상된 파일)." }); }
+      } else {
+        if (f.size > 30 * 1024 * 1024) { out.push({ name: f.name, kind: kindOf(f.name), error: "30MB 이하 파일만 올릴 수 있습니다." }); continue; }
+        $("#nFileInfo").textContent = `읽는 중… ${f.name}`;
+        out.push(await readOne(f.name, () => f.arrayBuffer()));
+      }
+    }
+  } finally { nBusy = false; }
+  nFiles = out;
+  nMain = pickMain(out);
+  renderFileList();
+}
+// 품의서 고르기: 파일명에 '품의' → 본문에 '품의서' → 첫 번째 읽은 PDF
+function pickMain(files) {
+  const ok = files.map((f, i) => [f, i]).filter(([f]) => !f.error);
+  return (ok.find(([f]) => /품의/.test(f.name)) || ok.find(([f]) => /품\s*의\s*서/.test(f.text || "")) || ok.find(([f]) => f.kind === "pdf") || ok[0] || [null, 0])[1];
+}
+function renderFileList() {
+  const ok = nFiles.filter(f => !f.error);
+  const ul = $("#nList");
+  ul.hidden = !nFiles.length;
+  ul.innerHTML = nFiles.map((f, i) => {
+    const info = f.error ? f.error : f.scanned ? (ai ? `${f.kind === "image" ? "이미지" : `${f.pages}쪽 스캔본`} · 등록 시 Claude가 읽습니다` : "스캔본 · Claude 연결이 없어 읽을 수 없습니다") : `${f.pages > 1 ? `${f.pages}쪽 · ` : ""}${f.text.length.toLocaleString()}자`;
+    return `<li><span class="pill ${f.error ? "hit" : i === nMain ? "run" : "done"}">${f.error ? "제외" : i === nMain ? "품의서" : "첨부"}</span>
+      <span class="fn">${esc(f.name)}</span>
+      ${f.error ? "<span></span>" : `<label><input type="radio" name="nMain" value="${i}" ${i === nMain ? "checked" : ""}>품의서로 지정</label>`}
+      <span class="fi ${f.error || (f.scanned && !ai) ? "bad" : ""}">${esc(info)}</span></li>`;
+  }).join("");
+  const main = nFiles[nMain];
+  if (!ok.length) setDrop("bad", "읽을 수 있는 파일이 없습니다. 아래 사유를 확인하세요.");
+  else setDrop("has", `${nZipName ? `${nZipName} · ` : ""}${ok.length}개 파일을 읽었습니다${nFiles.length > ok.length ? ` (${nFiles.length - ok.length}개 제외)` : ""}. 품의서: ${main ? main.name : "-"}`);
+}
+$("#nList").addEventListener("change", ev => { if (ev.target.name === "nMain") { nMain = Number(ev.target.value); renderFileList(); } });
 function guessMeta(text) {
   const pick = re => { const m = text.match(re); return m ? m[1].trim().replace(/\s{2,}.*$/, "").slice(0, 120) : ""; };
   return {
@@ -1358,104 +1504,86 @@ function guessMeta(text) {
     no: pick(/문서\s*번호\s*[:：]\s*([^\s\n]+)/)
   };
 }
-function setDrop(state, info) {
+function setDrop(cls, info) {
   const box = $("#nDrop");
   box.classList.remove("has", "bad", "over");
-  if (state) box.classList.add(state);
-  $("#nFileName").textContent = nPdf ? nPdf.name : "품의서 PDF를 끌어다 놓거나 선택하세요";
-  $("#nFileInfo").textContent = info || "포털에서 받은 PDF를 그대로 올리면 본문을 읽어 바로 스크리닝합니다. 스캔본은 Claude가 페이지를 읽습니다.";
+  if (cls) box.classList.add(cls);
+  if (!nFiles.length && !cls) $("#nFileName").textContent = "품의서 PDF나 첨부가 든 압축파일(.zip)을 끌어다 놓으세요";
+  $("#nFileInfo").textContent = info || "품의서와 첨부(사업자등록증, 등기부 등)를 여러 개 한꺼번에 올려도 됩니다. 업체명은 품의서에서, 대표자명은 첨부에서 찾습니다.";
 }
-async function takeFile(f) {
-  if (!f) return;
-  nPdf = null;
-  $("#nFileName").textContent = f.name;
-  $("#nFileInfo").textContent = "읽는 중…";
-  nBusy = true;
-  try {
-    if (/\.txt$/i.test(f.name) || f.type === "text/plain") {
-      const text = (await f.text()).trim();
-      nPdf = { name: f.name, pages: 1, text, scanned: false, ...guessMeta(text) };
-      setDrop("has", `텍스트 ${text.length.toLocaleString()}자를 읽었습니다.`);
-    } else if (/\.pdf$/i.test(f.name) || f.type === "application/pdf") {
-      if (f.size > 30 * 1024 * 1024) { setDrop("bad", "30MB 이하 PDF만 올릴 수 있습니다."); return; }
-      nPdf = await readPdf(f);
-      if (nPdf.scanned) setDrop(ai ? "has" : "bad", ai ? `${nPdf.pages}쪽 · 글자가 없는 스캔본입니다. 등록하면 Claude가 페이지를 읽어 본문과 업체명·대표자명을 추출합니다${nPdf.pages > 5 ? " (앞 5쪽)" : ""}.` : `${nPdf.pages}쪽 · 글자가 없는 스캔본입니다. Claude 연결이 없어 읽을 수 없으니 본문을 직접 붙여 넣으세요.`);
-      else setDrop("has", `${nPdf.pages}쪽 · 본문 ${nPdf.text.length.toLocaleString()}자를 읽었습니다.${nPdf.title ? ` 제목: ${nPdf.title}` : ""}`);
-      if (nPdf.scanned && !ai) { $("#nOpt").open = true; }
-    } else {
-      setDrop("bad", "PDF 또는 .txt 파일만 올릴 수 있습니다.");
-    }
-  } catch (e) {
-    nPdf = null;
-    setDrop("bad", "PDF를 읽지 못했습니다. 암호가 걸린 파일인지 확인하거나, 본문을 직접 붙여 넣으세요.");
-  } finally { nBusy = false; }
-}
-$("#nFile").addEventListener("change", ev => { const f = ev.target.files[0]; ev.target.value = ""; takeFile(f); });
+$("#nFile").addEventListener("change", ev => { const fs = [...ev.target.files]; ev.target.value = ""; takeFiles(fs); });
 const nDrop = $("#nDrop");
 nDrop.addEventListener("dragover", ev => { ev.preventDefault(); nDrop.classList.add("over"); });
 nDrop.addEventListener("dragleave", () => nDrop.classList.remove("over"));
-nDrop.addEventListener("drop", ev => { ev.preventDefault(); nDrop.classList.remove("over"); takeFile(ev.dataTransfer.files[0]); });
+nDrop.addEventListener("drop", ev => { ev.preventDefault(); nDrop.classList.remove("over"); takeFiles(ev.dataTransfer.files); });
 
 function ocrPrompt() {
-  return `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다. 첨부 이미지는 '계약체결 품의서' 스캔 페이지입니다.
+  return `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다. 첨부 이미지는 '계약체결 품의서' 또는 그 첨부 서류(사업자등록증, 법인 등기사항증명서 등)의 스캔 페이지입니다.
 1) text: 페이지의 글자를 줄바꿈을 살려 원문 그대로 옮겨 적습니다.
-2) 이번 계약의 상대방(계약업체)의 상호(company)와 대표자 성명(ceos)을 추출합니다. 옮겨 적은 text에 있는 문자열을 그대로 씁니다.
+2) 계약 상대방(계약업체)의 상호(company)와 대표자 성명(ceos)을 추출합니다. 옮겨 적은 text에 있는 문자열을 그대로 씁니다.
    기안자, 결재자, 당행 직원, 계약이 끝나는 기존 업체는 제외합니다. 공동대표는 모두 넣습니다. 없으면 company는 null, ceos는 빈 배열입니다.
 3) evidence에는 근거가 된 원문 한 줄, confidence는 0~1 숫자를 넣습니다.
 JSON 객체 하나만 답하세요: {"text": string, "company": string|null, "ceos": string[], "evidence": string, "confidence": number}`;
 }
 const blobToB64 = b => new Promise((ok, fail) => { const r = new FileReader(); r.onload = () => ok(String(r.result).split(",")[1]); r.onerror = fail; r.readAsDataURL(b); });
+const toExt = r => ({ company: r.company ? String(r.company).trim() : null, ceos: Array.isArray(r.ceos) ? r.ceos.map(x => String(x).trim()).filter(Boolean) : [], evidence: String(r.evidence || "").slice(0, 300), confidence: typeof r.confidence === "number" ? r.confidence : null, engine: "ai", at: new Date().toISOString() });
 
 $("#newForm").addEventListener("submit", async ev => {
   ev.preventDefault();
   if (nBusy) return;
   const hint = $("#nHint"), btn = $("#nSubmit");
   const body = $("#nBody").value.trim();
-  if (!nPdf && !body) {
-    hint.className = "note hint-bad";
-    hint.textContent = "품의서 PDF를 올리거나, 선택 입력에 본문을 붙여 넣으세요.";
-    if (!body) $("#nOpt").open = false;
-    return;
-  }
-  let text = nPdf && !nPdf.scanned ? nPdf.text : "";
-  let ocrExt = null;
-  if (nPdf && nPdf.scanned) {
-    if (!ai) {
-      if (!body) { hint.className = "note hint-bad"; hint.textContent = "스캔본은 Claude 연결이 있어야 읽을 수 있습니다. 본문을 직접 붙여 넣으세요."; $("#nOpt").open = true; return; }
-    } else {
-      btn.disabled = true; btn.textContent = "Claude가 스캔본을 읽는 중…";
-      hint.className = "note"; hint.textContent = "페이지 수에 따라 30초~2분 걸립니다.";
-      try {
-        const r = await ai.ocr(nPdf.images);
+  const files = nFiles.filter(f => !f.error);
+  const bad = msg => { hint.className = "note hint-bad"; hint.textContent = msg; };
+  if (!files.length && !body) return bad("품의서 PDF나 압축파일을 올리거나, 선택 입력에 본문을 붙여 넣으세요.");
+  const needOcr = files.filter(f => f.scanned && !f.text);
+  if (needOcr.length && !ai && files.every(f => f.scanned) && !body) { $("#nOpt").open = true; return bad("스캔본은 Claude 연결이 있어야 읽을 수 있습니다. 본문을 직접 붙여 넣으세요."); }
+  let singleExt = null;
+  if (needOcr.length && ai) {
+    btn.disabled = true;
+    hint.className = "note"; hint.textContent = "파일 수와 쪽수에 따라 30초~수 분 걸립니다.";
+    try {
+      for (let i = 0; i < needOcr.length; i++) {
+        btn.textContent = `Claude가 스캔본을 읽는 중… (${i + 1}/${needOcr.length})`;
+        const r = await ai.ocr(needOcr[i].images);
         aiConsented = true; setAiChip();
-        text = String(r.text || "").trim();
-        ocrExt = { company: r.company ? String(r.company).trim() : null, ceos: Array.isArray(r.ceos) ? r.ceos.map(x => String(x).trim()).filter(Boolean) : [], evidence: String(r.evidence || "").slice(0, 300), confidence: typeof r.confidence === "number" ? r.confidence : null, engine: "ai", at: new Date().toISOString() };
-      } catch (e) {
-        btn.disabled = false; btn.textContent = "등록하고 스크리닝";
-        hint.className = "note hint-bad"; hint.textContent = sampleErr(e) + " 본문을 직접 붙여 넣어 등록할 수도 있습니다.";
-        $("#nOpt").open = true;
-        return;
+        needOcr[i].text = String(r.text || "").trim();
+        if (files.length === 1) singleExt = toExt(r);
       }
+    } catch (e) {
+      btn.disabled = false; btn.textContent = "등록하고 스크리닝";
+      $("#nOpt").open = true;
+      return bad(sampleErr(e) + " 본문을 직접 붙여 넣어 등록할 수도 있습니다.");
     }
   }
+  const main = nFiles[nMain] && !nFiles[nMain].error ? nFiles[nMain] : files[0];
+  const readable = files.filter(f => f.text);
+  const attach = readable.filter(f => f !== main);
+  // 품의서 본문 뒤에 첨부를 구분선과 함께 이어 붙인다 (원문 대조·하이라이트가 첨부까지 닿도록)
+  let text = "";
+  if (main && main.text) text = attach.length ? `════ [품의서] ${main.name} ════\n${main.text}` : main.text;
+  attach.forEach((f, i) => { text += `${text ? "\n\n" : ""}════ [첨부 ${i + 1}] ${f.name} ════\n${f.text}`; });
   if (body) text = text ? `${text}\n\n── 추가 입력 ──\n${body}` : body;
-  const meta = { ...(nPdf ? nPdf : {}), ...(text && nPdf && nPdf.scanned ? guessMeta(text) : {}) };
+  if (!text.trim()) { btn.disabled = false; btn.textContent = "등록하고 스크리닝"; return bad("읽을 수 있는 본문이 없습니다. 본문을 직접 붙여 넣으세요."); }
+  const meta = guessMeta(main && main.text ? main.text : text);
   const now = new Date();
   const pad = n => String(n).padStart(2, "0");
-  const fileTitle = nPdf ? nPdf.name.replace(/\.[^.]+$/, "") : "";
+  const fileTitle = main ? main.name.replace(/\.[^.]+$/, "") : "";
+  const src = nZipName ? `${nZipName}${attach.length ? ` (첨부 ${attach.length}건)` : ""}` : main ? `${main.name}${attach.length ? ` 외 첨부 ${attach.length}건` : ""}` : "";
   const doc = { id: "u" + now.getTime().toString(36) + Math.random().toString(36).slice(2, 6),
     no: (meta.no || `포털-${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`).slice(0, 60),
     title: ($("#nTitle").value.trim() || meta.title || fileTitle || "제목 없는 품의서").slice(0, 120),
     dept: ($("#nDept").value.trim() || meta.dept || "기안부서 미기재").slice(0, 40),
-    text: text.slice(0, 20000), receivedAt: now.toISOString().slice(0, 19), by: myId || null, source: nPdf ? nPdf.name.slice(0, 120) : "" };
+    text: text.slice(0, 60000), receivedAt: now.toISOString().slice(0, 19), by: myId || null, source: src.slice(0, 160) };
   $("#newDlg").close();
   mine.add(doc.id);
   state.docs.push(doc); state.selected = doc.id; setTab("screen");
-  if (ocrExt) { state.aiExt[doc.id] = ocrExt; if (db) db.collection("extractions").doc(doc.id).set(ocrExt).catch(() => {}); }
+  if (singleExt && !body) { state.aiExt[doc.id] = singleExt; if (db) db.collection("extractions").doc(doc.id).set(singleExt).catch(() => {}); }
   render();
   if (db) db.collection("inbox").doc(doc.id).set(doc).catch(() => toast("info", "공유 저장 실패", "이 품의서는 이 브라우저에만 있습니다."));
   persistLocal();
-  if (ai && !ocrExt) aiExtract(doc.id);
+  if (text.length > 60000) toast("info", "본문이 깁니다", `${text.length.toLocaleString()}자 중 앞 60,000자까지 보관합니다. 대표자가 뒤쪽 첨부에 있으면 직접 확정하세요.`);
+  if (ai && !(singleExt && !body)) aiExtract(doc.id);
 });
 const mine = new Set();
 $("#keyForm").addEventListener("submit", ev => {

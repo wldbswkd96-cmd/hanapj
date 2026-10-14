@@ -10,7 +10,7 @@ import { betaZodOutputFormat } from "@anthropic-ai/sdk/helpers/beta/zod";
 import { z } from "zod";
 
 const MODEL = "claude-opus-5-5";
-const MAX_TEXT = 20000;
+const MAX_TEXT = 60000;
 const MAX_DOCS = 30;
 
 const Single = z.object({
@@ -29,6 +29,7 @@ const Batch = z.object({
 const RULES = `규칙:
 - 원문에 적힌 문자열을 그대로 복사합니다. 철자, 띄어쓰기, 법인격 표기((주), 주식회사, ㈜)를 바꾸지 마세요.
 - 기안자, 결재자, 당행 직원, 계약이 끝나는 기존 업체는 제외합니다. 이번에 계약하는 업체만 추출합니다.
+- '════ [첨부 n] 파일명 ════' 줄 아래는 첨부 서류(사업자등록증, 법인 등기사항증명서, 견적서 등)입니다. 업체명은 품의서 본문을 우선하고, 대표자가 품의서에 없으면 첨부에서 찾되 반드시 그 계약업체의 대표자여야 합니다(첨부의 상호가 계약업체와 같은지 확인).
 - 공동대표이면 모두 넣습니다.
 - 찾을 수 없으면 company는 null, ceos는 빈 배열입니다.`;
 
@@ -37,7 +38,7 @@ function singlePrompt(text) {
 아래 '계약체결 품의서'에서 이번 계약의 상대방(계약업체)의 상호와 대표자 성명을 추출하세요.
 
 ${RULES}
-- evidence에는 근거가 된 원문 한 줄을 그대로 넣고, confidence는 0~1 사이 숫자로 답합니다.
+- evidence에는 근거가 된 원문 줄을 그대로 넣고(업체명과 대표자 근거가 다르면 " / "로 잇기), confidence는 0~1 사이 숫자로 답합니다.
 
 <품의서>
 ${text}
