@@ -234,7 +234,7 @@ dialog textarea { min-height: 220px; font-family: var(--f-doc); }
       </div>
     </div>
     <div class="top-right">
-      <span class="chip" id="chipAi"><span class="dot" id="dotAi"></span><span id="txtAi">AI 추출 연결 확인 중</span></span>
+      <button class="chip" id="chipAi" type="button" title="AI 추출 연결 상태"><span class="dot" id="dotAi"></span><span id="txtAi">AI 추출 연결 확인 중</span></button>
       <span class="chip" id="chipDb"><span class="dot" id="dotDb"></span><span id="txtDb">공유 저장소 확인 중</span></span>
       <button class="bell" id="bellBtn" type="button" aria-label="위험 알림함 열기">알림 <span class="count num zero" id="bellCount">0</span></button>
     </div>
@@ -355,6 +355,18 @@ dialog textarea { min-height: 220px; font-family: var(--f-doc); }
     <div class="actions" style="justify-content:flex-end">
       <button class="btn" type="button" id="nCancel">취소</button>
       <button class="btn primary" type="submit" id="nSubmit">등록하고 스크리닝</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="keyDlg">
+  <form id="keyForm" method="dialog">
+    <h2 style="font-size:16px">AI 접근 키</h2>
+    <p class="note">배포 서버에 WLF_ACCESS_KEY가 설정된 경우에만 필요합니다. 키는 이 브라우저에만 저장됩니다.</p>
+    <label for="kKey">접근 키<input type="text" id="kKey" autocomplete="off"></label>
+    <div class="actions" style="justify-content:flex-end">
+      <button class="btn" type="button" id="kCancel">취소</button>
+      <button class="btn primary" type="submit">저장</button>
     </div>
   </form>
 </dialog>
@@ -579,6 +591,14 @@ ${text}
 </품의서>`;
 }
 
+function batchPrompt(docs) {
+  return `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다. 아래 품의서 발췌 각각에서 이번 계약 상대방(계약업체)의 상호와 대표자 성명을 추출하세요.
+규칙: 원문 문자열을 그대로 복사, 기안자·결재자·당행 직원·계약이 끝나는 기존 업체는 제외, 공동대표는 모두 포함.
+JSON 배열 하나만 답하세요: [{"id": string, "company": string|null, "ceos": string[]}]
+
+${docs.map(g => `<doc id="${g.id}">\n${g.text}\n</doc>`).join("\n\n")}`;
+}
+
 /* ---------- 상태 ---------- */
 const state = {
   docs: SAMPLE_DOCS.map(d => ({ ...d, example: true })),
@@ -591,6 +611,27 @@ const state = {
   ruleAcc: null, aiAcc: null, aiEvalRows: null
 };
 let sample = null, db = null, user = null, myId = null, aiConsented = false;
+// AI 추출기: 아티팩트 안에서는 claude.use("sample"), Vercel 배포에서는 /api/extract
+let ai = null;
+function artifactAi(s) {
+  return {
+    kind: "artifact",
+    one: text => s.json(aiPrompt(text), { modelTier: "default" }),
+    batch: docs => s.json(batchPrompt(docs), { modelTier: "default" }).then(o => Array.isArray(o) ? o : (o && o.results) || [])
+  };
+}
+function serverAi() {
+  const call = async body => {
+    let key = ""; try { key = localStorage.getItem("wlf.key") || ""; } catch {}
+    const r = await fetch("/api/extract", { method: "POST", headers: { "content-type": "application/json", ...(key ? { "x-wlf-key": key } : {}) }, body: JSON.stringify(body) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) { if (j.error === "unauthorized") needKey = true; setAiChip(); throw { code: j.error || "server_error" }; }
+    needKey = false;
+    return j;
+  };
+  return { kind: "server", one: text => call({ text }), batch: docs => call({ docs }).then(j => j.results || []) };
+}
+let needKey = false;
 const seenAlerts = new Set();
 
 /* ---------- 계산 ---------- */
@@ -735,7 +776,7 @@ function renderDoc(evals) {
     </table></div>
     ${e.crossDiff ? `<p class="note" style="color:var(--warn)">두 추출기의 결과가 다릅니다. 원문 표시를 확인하고 값을 확정하세요.</p>` : ""}`;
   }
-  const aiBtn = sample
+  const aiBtn = ai
     ? `<button class="btn sm primary" id="aiBtn" type="button" ${busy ? "disabled" : ""}>${busy ? "Claude 분석 중…" : x.ai ? "Claude로 다시 추출" : "Claude로 추출"}</button>`
     : `<span class="note">Claude 연결이 없어 규칙 기반으로 추출했습니다.</span>`;
   $("#extractSec").innerHTML = `
@@ -781,7 +822,7 @@ function renderDoc(evals) {
         <button class="btn ${needHold ? "danger" : ""}" id="holdBtn" type="button">거래 보류 · 보고</button>
       </div>
       ${e.blocked ? `<p class="note">추출값이 원문과 맞지 않아 '이상 없음'으로 닫을 수 없습니다. 값을 확정한 뒤 재조회하세요.</p>` : ""}
-      <p class="note">판정은 ${db ? "팀 공유 이력에 저장되고 모든 담당자 화면에 반영됩니다" : "이 브라우저에만 남습니다 (공유 저장소 미연결)"}.</p>`;
+      <p class="note">판정은 ${db ? "팀 공유 이력에 저장되고 모든 담당자 화면에 반영됩니다" : "이 브라우저에 저장됩니다 (공유 저장소 미연결)"}.</p>`;
   }
 }
 function renderAlerts(evals) {
@@ -818,7 +859,7 @@ async function resolveNames() {
 }
 function renderHistory() {
   const rows = Object.values(state.reviews).sort((a, b) => b.at.localeCompare(a.at));
-  $("#histNote").textContent = db ? "팀 공유 저장소 · 실시간 반영" : "이 브라우저 세션에만 남습니다";
+  $("#histNote").textContent = db ? "팀 공유 저장소 · 실시간 반영" : "이 브라우저에 저장된 이력";
   $("#histTbl").innerHTML = `<tr><th>판정 시각</th><th>문서번호</th><th>제목</th><th>확정 업체명</th><th>확정 대표자</th><th>자동 판정</th><th>담당자 판정</th><th>추출</th><th>검토자</th><th>의견</th></tr>` +
     (rows.length ? rows.map(r => `<tr><td class="num">${fmtTime(r.at)}</td><td class="mono">${esc(r.no)}</td><td>${esc(r.title)}</td><td>${esc(r.company)}</td><td>${esc((r.ceos || []).join(", "))}</td>
       <td><span class="pill ${esc(r.verdict)}">${esc(VERDICT[r.verdict]?.pill || r.verdict)}</span> <span class="num">${fs(Number(r.top || 0))}</span></td>
@@ -886,18 +927,12 @@ function renderEval() {
 }
 async function runAiEval() {
   const btn = $("#evalAiBtn");
-  if (!sample) return;
+  if (!ai) { $("#gAiS").textContent = "Claude 연결이 없어 측정할 수 없습니다."; return; }
   btn.disabled = true; btn.textContent = "Claude 측정 중… (최대 1~2분)";
   $("#gAiS").textContent = "24건을 한 번에 보내 분석하고 있습니다.";
   try {
-    const prompt = `당신은 은행 준법지원부 AML 담당자를 돕는 정보 추출기입니다. 아래 품의서 발췌 각각에서 이번 계약 상대방(계약업체)의 상호와 대표자 성명을 추출하세요.
-규칙: 원문 문자열을 그대로 복사, 기안자·결재자·당행 직원·계약이 끝나는 기존 업체는 제외, 공동대표는 모두 포함.
-JSON 배열 하나만 답하세요: [{"id": string, "company": string|null, "ceos": string[]}]
-
-${EVAL.map(g => `<doc id="${g.id}">\n${g.text}\n</doc>`).join("\n\n")}`;
-    const out = await sample.json(prompt, { modelTier: "default" });
+    const rows = await ai.batch(EVAL.map(g => ({ id: g.id, text: g.text })));
     aiConsented = true; setAiChip();
-    const rows = Array.isArray(out) ? out : (out && out.results) || [];
     state.aiEvalRows = rows;
     let ok = 0;
     for (const g of EVAL) { const a = rows.find(x => x.id === g.id) || { company: null, ceos: [] }; const s = scoreEval(a, g); ok += s.coOk + s.ceoOk; }
@@ -914,21 +949,25 @@ function sampleErr(e) {
   if (c === "not_granted") return "Claude 사용이 허용되지 않아 규칙 기반 추출을 유지합니다.";
   if (c === "rate_limited") return "요청이 많아 잠시 후 다시 시도하세요.";
   if (c === "cancelled") return "중단했습니다.";
+  if (c === "unauthorized") return "접근 키가 필요합니다. 상단의 AI 상태 칩을 눌러 키를 입력하세요.";
+  if (c === "not_configured") return "서버에 ANTHROPIC_API_KEY가 설정되지 않았습니다.";
+  if (c === "refusal") return "Claude가 이 문서의 처리를 거절했습니다. 값을 직접 확정하세요.";
   return "Claude 응답을 처리하지 못했습니다. 다시 시도하거나 값을 직접 확정하세요.";
 }
 
 /* ---------- 동작 ---------- */
 async function aiExtract(docId, quiet) {
   const d = state.docs.find(x => x.id === docId);
-  if (!sample || !d || state.aiBusy[docId]) return;
+  if (!ai || !d || state.aiBusy[docId]) return;
   state.aiBusy[docId] = true; render();
   try {
-    const r = await sample.json(aiPrompt(d.text), { modelTier: "default" });
+    const r = await ai.one(d.text);
     aiConsented = true; setAiChip();
     const ext = { company: r && r.company ? String(r.company).trim() : null, ceos: Array.isArray(r && r.ceos) ? r.ceos.map(s => String(s).trim()).filter(Boolean) : [], evidence: r && r.evidence ? String(r.evidence).slice(0, 300) : "", confidence: typeof (r && r.confidence) === "number" ? r.confidence : null, engine: "ai", at: new Date().toISOString() };
     state.aiExt[docId] = ext;
     delete state.ext[docId];
     if (db) db.collection("extractions").doc(docId).set(ext).catch(() => {});
+    persistLocal();
   } catch (e) {
     if (!quiet) toast("info", "AI 추출 실패", sampleErr(e));
   } finally {
@@ -948,6 +987,7 @@ async function saveReview(decision) {
   const e = evaluate(d);
   const rv = { docId: d.id, no: d.no, title: d.title, dept: d.dept, company: e.x.company || "", ceos: e.x.ceos, engine: e.x.engine, verdict: e.verdict, top: Number(e.top.toFixed(3)), decision, memo: ($("#memo")?.value || "").slice(0, 1000), at: new Date().toISOString(), by: myId || null };
   state.reviews[d.id] = rv;
+  persistLocal();
   render();
   if (db) {
     try { await db.collection("reviews").doc(d.id).set(rv); toast("info", "판정 저장됨", `${d.no} · 팀 검토 이력에 기록했습니다.`); }
@@ -957,6 +997,7 @@ async function saveReview(decision) {
 async function reopenReview() {
   const id = state.selected;
   delete state.reviews[id];
+  persistLocal();
   render();
   if (db) db.collection("reviews").doc(id).delete().catch(() => {});
 }
@@ -977,6 +1018,8 @@ document.addEventListener("click", ev => {
     case "newBtn": openNew(); break;
     case "nCancel": $("#newDlg").close(); break;
     case "evalAiBtn": runAiEval(); break;
+    case "chipAi": if (ai && ai.kind === "server") { let k = ""; try { k = localStorage.getItem("wlf.key") || ""; } catch {} $("#kKey").value = k; $("#keyDlg").showModal(); } break;
+    case "kCancel": $("#keyDlg").close(); break;
   }
 });
 function setTab(tab) {
@@ -991,7 +1034,7 @@ function setTab(tab) {
 }
 function openNew() {
   $("#newForm").reset();
-  $("#nHint").textContent = sample ? "등록하면 Claude가 업체명·대표자명을 추출하고 바로 WLF 조회를 실행합니다." : "Claude 연결이 없어 규칙 기반으로 추출합니다.";
+  $("#nHint").textContent = ai ? "등록하면 Claude가 업체명·대표자명을 추출하고 바로 WLF 조회를 실행합니다." : "Claude 연결이 없어 규칙 기반으로 추출합니다.";
   $("#newDlg").showModal();
 }
 $("#nFile").addEventListener("change", async ev => {
@@ -1008,17 +1051,43 @@ $("#newForm").addEventListener("submit", async ev => {
   mine.add(doc.id);
   state.docs.push(doc); state.selected = doc.id; setTab("screen"); render();
   if (db) db.collection("inbox").doc(doc.id).set(doc).catch(() => toast("info", "공유 저장 실패", "이 품의서는 이 브라우저에만 있습니다."));
-  if (sample) aiExtract(doc.id);
+  persistLocal();
+  if (ai) aiExtract(doc.id);
 });
 const mine = new Set();
+$("#keyForm").addEventListener("submit", ev => {
+  ev.preventDefault();
+  try { localStorage.setItem("wlf.key", $("#kKey").value.trim()); } catch {}
+  needKey = false; setAiChip(); $("#keyDlg").close();
+});
+
+/* 공유 저장소가 없을 때(Vercel 배포 등) 판정·등록 품의서·AI 추출을 이 브라우저에 보관 */
+let localMode = false;
+function persistLocal() {
+  if (!localMode) return;
+  try {
+    localStorage.setItem("wlf.local", JSON.stringify({ reviews: state.reviews, aiExt: state.aiExt, docs: state.docs.filter(d => !d.example) }));
+  } catch {}
+}
+function loadLocal() {
+  localMode = true;
+  try {
+    const v = JSON.parse(localStorage.getItem("wlf.local") || "null");
+    if (!v) return;
+    if (v.reviews && typeof v.reviews === "object") state.reviews = v.reviews;
+    if (v.aiExt && typeof v.aiExt === "object") state.aiExt = v.aiExt;
+    if (Array.isArray(v.docs)) for (const d of v.docs) if (d && d.id && d.text && !state.docs.some(x => x.id === d.id)) state.docs.push({ id: String(d.id), no: String(d.no || ""), title: String(d.title || ""), dept: String(d.dept || ""), receivedAt: String(d.receivedAt || ""), text: String(d.text) });
+  } catch {}
+}
 
 function setAiChip() {
-  $("#dotAi").classList.toggle("on", !!sample);
-  $("#txtAi").textContent = sample ? (aiConsented ? "Claude AI 추출 사용 중" : "Claude AI 추출 가능") : "규칙 기반 추출 (AI 미연결)";
+  $("#dotAi").classList.toggle("on", !!ai && !needKey);
+  const where = ai && ai.kind === "server" ? " · 서버" : "";
+  $("#txtAi").textContent = needKey ? "AI 접근 키 필요 · 입력" : ai ? (aiConsented ? "Claude AI 추출 사용 중" : "Claude AI 추출 가능") + where : "규칙 기반 추출 (AI 미연결)";
 }
 function setDbChip() {
   $("#dotDb").classList.toggle("on", !!db);
-  $("#txtDb").textContent = db ? "팀 공유 저장소 연결됨" : "이 브라우저에만 기록";
+  $("#txtDb").textContent = db ? "팀 공유 저장소 연결됨" : "이 브라우저에 저장";
 }
 
 /* ---------- 부팅 ---------- */
@@ -1029,9 +1098,15 @@ render(); setTab(state.tab); booted = true;
 
 (async () => {
   const c = window.claude;
-  if (!c || !c.use) { setAiChip(); setDbChip(); return; }
-  const [s, d, u] = await Promise.all([c.use("sample").catch(() => null), c.use("db").catch(() => null), c.use("user").catch(() => null)]);
-  sample = s; db = d; user = u;
+  if (c && c.use) {
+    const [s, d, u] = await Promise.all([c.use("sample").catch(() => null), c.use("db").catch(() => null), c.use("user").catch(() => null)]);
+    sample = s; db = d; user = u;
+  }
+  if (sample) ai = artifactAi(sample);
+  else if (location.protocol.startsWith("http")) {
+    try { const r = await fetch("/api/extract", { cache: "no-store" }); const j = await r.json(); if (r.ok && j.ok) ai = serverAi(); } catch {}
+  }
+  if (!db) loadLocal();
   setAiChip(); setDbChip();
   if (user) { try { myId = await user.id(); } catch {} }
   render();

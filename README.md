@@ -3,7 +3,23 @@
 준법지원부 AML 담당자가 계약체결 품의서를 받을 때마다 계약업체명·대표자명을 수기로 WLF(요주의 인물/법인 리스트)에 검색하던 업무를 자동화하는 프로토타입입니다.
 
 - 배포(아티팩트): https://claude.ai/artifact/9piCqP5CaCSRWhbbfEk7LA
-- 소스: [`wlf-screening/index.html`](wlf-screening/index.html) (단일 HTML)
+- 소스: [`wlf-screening/index.html`](wlf-screening/index.html) (화면), [`api/extract.js`](api/extract.js) (Vercel 서버리스 함수)
+
+## 배포 경로 두 가지
+
+| | 아티팩트 (claude.ai) | Vercel |
+| --- | --- | --- |
+| AI 추출 | 보는 사람의 Claude 계정 (`claude.use("sample")`) | `/api/extract` → Anthropic API (`ANTHROPIC_API_KEY`) |
+| 판정·등록 품의서 저장 | 팀 공유 저장소 (실시간 반영) | 이 브라우저(localStorage) |
+| AI를 못 쓸 때 | 규칙 기반 추출로 자동 전환 | 규칙 기반 추출로 자동 전환 |
+
+### Vercel 설정
+
+- 빌드: `vercel.json`이 `npm run build`로 `wlf-screening/index.html`에 문서 골격을 씌워 `dist/index.html`을 만들고, `dist`를 정적 출력으로 씁니다. 별도 프레임워크 설정은 필요 없습니다(Framework Preset: Other).
+- 환경 변수
+  - `ANTHROPIC_API_KEY` (필수): 없으면 화면은 규칙 기반 추출로만 동작합니다.
+  - `WLF_ACCESS_KEY` (권장): 설정하면 `x-wlf-key` 헤더가 일치하는 요청만 AI 추출을 호출할 수 있습니다. 공개 URL에서 API 비용이 무단으로 쓰이는 것을 막습니다. 화면 상단의 AI 상태 칩을 눌러 키를 입력합니다.
+- 모델: `claude-opus-5-5`, 구조화 출력(JSON 스키마)으로 응답을 받고, 안전 분류기 거절 시 서버 측 대체 모델로 재시도(`fallbacks: "default"`)합니다.
 
 ## 완료조건 대응
 
